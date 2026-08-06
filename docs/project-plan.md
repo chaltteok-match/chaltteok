@@ -297,6 +297,8 @@ chaltteok/
 
 ## 9. 작업 및 리뷰 규칙
 
+Issue·브랜치·PR 이름과 세부 리뷰·병합 방식은 [협업 가이드](../CONTRIBUTING.md)를 따른다.
+
 ```text
 담당자 초안 작성
 → Issue 또는 문서로 공유
@@ -327,6 +329,8 @@ chaltteok/
 7. feat/material-answer-flow
 8. 통합 및 테스트
 ```
+
+3~5번은 서로 수정하는 파일이 겹치지 않으면 병렬로 작업하되, 병합 전에 최신 `main`을 반영한다.
 
 ## 10. MVP 제외 범위
 

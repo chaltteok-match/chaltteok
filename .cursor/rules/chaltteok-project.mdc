@@ -50,4 +50,5 @@ alwaysApply: true
 
 - `main` 직접 푸시 금지, 목적별 브랜치 + PR
 - 공통 기반은 한 번만 만들고 문서·PR로 공유
-- 1주 차 병합 순서: repository-bootstrap → backend-skeleton → API/데이터 모델 → DB → HCX → 공시 흐름
+- Issue·브랜치·PR 이름과 병합 방식은 `CONTRIBUTING.md`를 따름
+- 1주 차 작업 순서: repository-bootstrap → backend-skeleton → (API·데이터 모델 / DB / HCX 병렬) → 공시 흐름

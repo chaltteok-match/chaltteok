@@ -79,6 +79,9 @@ Issue 또는 문서로 작업 공유
 - PR은 관련 테스트와 필요한 문서 변경을 포함합니다.
 - 리뷰어는 가능하면 변경 사항을 로컬에서 실행합니다.
 
+Issue·브랜치·PR 제목과 세부 리뷰·병합 방식은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다.
+
 ## 문서
 
 - [프로젝트 계획](docs/project-plan.md): 역할 분담, 개발 일정, 세부 작업 규칙 및 확장 방향
+- [협업 가이드](CONTRIBUTING.md): Issue·브랜치·PR 이름과 리뷰·병합 규칙

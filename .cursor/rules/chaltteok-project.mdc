@@ -1,0 +1,53 @@
+---
+description: Chaltteok 공시 AI Agent 프로젝트 핵심 컨텍스트 (계획서 기반)
+alwaysApply: true
+---
+
+# Chaltteok 프로젝트 메모리
+
+근거 기반 공시 검색·분석 AI Agent. MVP는 평가용 `GET /answer` API다.
+
+## 목표
+
+- 제공 공시 데이터만 사용 (외부 뉴스·OpenDART 실시간 호출 금지)
+- LLM은 HyperCLOVA X만 사용
+- 답변에 공시명·공시일·근거·정보 한계 포함
+- 확인할 수 없으면 추측하지 않고 답변 불가
+
+## 기술 스택
+
+- Java 21, Spring Boot, Spring Data JPA, Spring AI (막히면 RestClient)
+- Python 3.12 전처리만 (FastAPI/마이크로서비스 금지)
+- PostgreSQL, 필요 시 pgvector
+- Docker Compose, JUnit 5, pytest
+
+## 패키지 구조 (`backend/src/main/java/com/chaltteok/`)
+
+- `answer/` — 질문 분류·답변 조립 (`AnswerService`, Handler 라우팅)
+- `financial/` — 정기공시 (예령)
+- `contract/` — 거래소공시 계약·투자 (예령)
+- `fundraising/` — 주요사항보고서 (다은)
+- `ownership/` — 지분공시 (다은)
+- `disclosure/` — 공통 공시·정정/후속 관계
+- `retrieval/` — 공통 검색
+- `hcx/` — HyperCLOVA X
+
+## 아키텍처 원칙
+
+- 컨트롤러에 검색·계산·LLM 로직 금지 → `AnswerService` + Handler
+- 평가 API DTO와 내부 `AnswerResult` 분리
+- 정정공시는 별도 유형이 아니라 관계 모델로 처리
+- 검색은 메타데이터·키워드 우선, pgvector는 한계 확인 후
+
+## 역할·일정
+
+- 예령: 정기공시(비교·계산) + 거래소공시(이력)
+- 다은: 주요사항보고서(종합·조건 변경) + 지분공시(이력)
+- MVP: 2026.08.03 ~ 09.05 / 제출 마감 09.06
+- MVP 제외: 프론트엔드, 로그인, 대화방, 알림, 리포트
+
+## 협업
+
+- `main` 직접 푸시 금지, 목적별 브랜치 + PR
+- 공통 기반은 한 번만 만들고 문서·PR로 공유
+- 1주 차 병합 순서: repository-bootstrap → backend-skeleton → API/데이터 모델 → DB → HCX → 공시 흐름

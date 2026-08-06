@@ -1,16 +1,13 @@
+# 로컬 전용 설정 예시입니다.
+# 사용 방법:
+#   cp application-local.example.yml application-local.yml
+#   application-local.yml의 값을 infra/.env와 동일하게 맞춘 뒤
+#   --spring.profiles.active=local 로 실행합니다.
+#
+# application-local.yml은 Git에 커밋하지 마세요.
+
 spring:
-  application:
-    name: chaltteok-backend
   datasource:
-    url: jdbc:postgresql://localhost:5432/${DB_NAME}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-
-server:
-  port: 8080
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
+    url: jdbc:postgresql://localhost:5432/chaltteok
+    username: chaltteok
+    password: change-me

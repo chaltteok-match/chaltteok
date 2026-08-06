@@ -10,7 +10,6 @@ credentials*.json
 *.pem
 *.key
 
-**/application.yml
 **/application-local.yml
 **/application-local.yaml
 **/application-local.properties

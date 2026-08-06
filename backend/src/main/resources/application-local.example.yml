@@ -2,6 +2,7 @@
 # 사용 방법:
 #   cp application-local.example.yml application-local.yml
 #   application-local.yml의 값을 infra/.env와 동일하게 맞춥니다.
+#   (DB명, 유저, 비밀번호, JDBC URL 포트 = POSTGRES_PORT)
 #   application.yml에 spring.profiles.active=local 이 있어
 #   ./gradlew bootRun 만으로 local 설정이 적용됩니다.
 #

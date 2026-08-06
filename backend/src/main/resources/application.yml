@@ -1,6 +1,16 @@
 spring:
+  profiles:
+    active: local
   application:
     name: chaltteok-backend
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Seoul
 
 server:
   port: 8080
@@ -12,11 +22,8 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: never
+      show-details: when_authorized
 
-# DB 연결은 feat/database-infrastructure에서 활성화한다.
-# spring:
-#   datasource:
-#     url: jdbc:postgresql://localhost:5432/chaltteok
-#     username: ${DB_USERNAME}
-#     password: ${DB_PASSWORD}
+# DB 접속 정보(url/username/password)는 여기에 두지 않습니다.
+# local 프로필이 기본 활성이므로 application-local.yml 값을 사용합니다.
+# 자세한 실행 방법은 infra/README.md 참고.

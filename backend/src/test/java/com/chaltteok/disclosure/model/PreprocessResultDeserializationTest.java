@@ -1,6 +1,7 @@
 package com.chaltteok.disclosure.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.chaltteok.disclosure.model.enums.ContentType;
 import com.chaltteok.disclosure.model.enums.DocGroup;
@@ -10,19 +11,24 @@ import com.chaltteok.disclosure.model.enums.RelationType;
 import com.chaltteok.disclosure.model.enums.Scope;
 import com.chaltteok.disclosure.model.enums.SourceFormat;
 import com.chaltteok.disclosure.model.enums.ValueType;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.time.LocalDate;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * docs/data-model.md §7 예시 JSON 역직렬화·필드 매핑 검증.
+ * docs/data-model.md §7 예시 JSON 역직렬화·필드 매핑·조건부 검증.
  */
 class PreprocessResultDeserializationTest {
 
@@ -33,77 +39,14 @@ class PreprocessResultDeserializationTest {
     void setUp() {
         objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
-                .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+                .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .enable(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES);
         validator = Validation.buildDefaultValidatorFactory().getValidator();
     }
 
     @Test
     void deserializesSection7Example() throws Exception {
-        String json = """
-                {
-                  "schema_version": "0.1",
-                  "parser_version": "0.1.0",
-                  "document": {
-                    "doc_id": "periodic_20250311000001",
-                    "corp_code": "00000001",
-                    "corp_name": "예시전자",
-                    "listed_name": "예시전자",
-                    "stock_code": "000001",
-                    "industry": "IT",
-                    "sector": "반도체·전자부품",
-                    "doc_group": "periodic",
-                    "doc_subtype": "annual",
-                    "report_nm": "사업보고서 (2024.12)",
-                    "rcept_no": "20250311000001",
-                    "rcept_dt": "2025-03-11",
-                    "flr_nm": "예시전자",
-                    "is_correction": false,
-                    "base_year": 2024,
-                    "base_month": 12,
-                    "source_path": "raw/periodic/예시전자/20250311000001_annual_2024_12",
-                    "manifest_file_format": "xml",
-                    "source_file_count": 1
-                  },
-                  "evidence_chunks": [
-                    {
-                      "chunk_id": "periodic_20250311000001:chunk:0000",
-                      "doc_id": "periodic_20250311000001",
-                      "sequence": 0,
-                      "content_type": "table",
-                      "text": "연결 포괄손익계산서 | 매출액 | 2024년 | 100,000백만원",
-                      "source_file": "raw/periodic/예시전자/20250311000001_annual_2024_12/20250311000001.xml",
-                      "source_format": "dart_xml",
-                      "page_number": null,
-                      "section_title": "재무에 관한 사항",
-                      "table_title": "연결 포괄손익계산서",
-                      "row_label": "매출액",
-                      "column_label": "2024년"
-                    }
-                  ],
-                  "extracted_facts": [
-                    {
-                      "fact_id": "periodic_20250311000001:fact:0000",
-                      "doc_id": "periodic_20250311000001",
-                      "chunk_id": "periodic_20250311000001:chunk:0000",
-                      "fact_key": "revenue",
-                      "label": "매출액",
-                      "value_type": "number",
-                      "raw_value": "100,000",
-                      "raw_unit": "백만원",
-                      "normalized_value": "100000000000",
-                      "normalized_unit": "KRW",
-                      "period_start": "2024-01-01",
-                      "period_end": "2024-12-31",
-                      "as_of_date": null,
-                      "period_basis": "cumulative",
-                      "scope": "consolidated"
-                    }
-                  ],
-                  "relations": []
-                }
-                """;
-
-        PreprocessResult result = objectMapper.readValue(json, PreprocessResult.class);
+        PreprocessResult result = objectMapper.readValue(validSection7Json(), PreprocessResult.class);
 
         assertThat(result.schemaVersion()).isEqualTo("0.1");
         assertThat(result.parserVersion()).isEqualTo("0.1.0");
@@ -223,5 +166,158 @@ class PreprocessResultDeserializationTest {
         ManifestFileFormat format = objectMapper.readValue(json, ManifestFileFormat.class);
         assertThat(format).isEqualTo(ManifestFileFormat.PDF_HTML);
         assertThat(objectMapper.writeValueAsString(format)).isEqualTo("\"pdf+html\"");
+    }
+
+    @Test
+    void failsWhenPeriodicBasePeriodMissing() throws Exception {
+        PreprocessResult result = readMutated(root -> {
+            ObjectNode document = (ObjectNode) root.get("document");
+            document.putNull("base_year");
+            document.putNull("base_month");
+        });
+
+        assertThat(validator.validate(result))
+                .extracting(ConstraintViolation::getMessage)
+                .contains("doc_group=periodic이면 base_year와 base_month가 필요합니다");
+    }
+
+    @Test
+    void failsWhenNonPeriodicHasBasePeriod() throws Exception {
+        PreprocessResult result = readMutated(root -> {
+            ObjectNode document = (ObjectNode) root.get("document");
+            document.put("doc_group", "exchange");
+            document.put("doc_subtype", "supply_contract");
+            document.put("base_year", 2024);
+            document.put("base_month", 12);
+        });
+
+        assertThat(validator.validate(result))
+                .extracting(ConstraintViolation::getMessage)
+                .contains("doc_group이 periodic이 아니면 base_year와 base_month는 null이어야 합니다");
+    }
+
+    @Test
+    void failsWhenEvidenceChunksEmpty() throws Exception {
+        PreprocessResult result = readMutated(root ->
+                ((ObjectNode) root).set("evidence_chunks", objectMapper.createArrayNode()));
+
+        assertThat(validator.validate(result))
+                .anyMatch(v -> v.getPropertyPath().toString().contains("evidenceChunks"));
+    }
+
+    @Test
+    void failsWhenSequenceNegative() throws Exception {
+        PreprocessResult result = readMutated(root -> {
+            ObjectNode chunk = (ObjectNode) root.get("evidence_chunks").get(0);
+            chunk.put("sequence", -1);
+        });
+
+        assertThat(validator.validate(result))
+                .anyMatch(v -> v.getPropertyPath().toString().contains("sequence"));
+    }
+
+    @Test
+    void failsWhenPdfMissingPageNumber() throws Exception {
+        PreprocessResult result = readMutated(root -> {
+            ObjectNode chunk = (ObjectNode) root.get("evidence_chunks").get(0);
+            chunk.put("source_format", "pdf");
+            chunk.putNull("page_number");
+        });
+
+        assertThat(validator.validate(result))
+                .extracting(ConstraintViolation::getMessage)
+                .contains("source_format=pdf이면 page_number가 필요하고, 그 외에는 null이어야 합니다");
+    }
+
+    @Test
+    void failsWhenNonPdfHasPageNumber() throws Exception {
+        PreprocessResult result = readMutated(root -> {
+            ObjectNode chunk = (ObjectNode) root.get("evidence_chunks").get(0);
+            chunk.put("source_format", "dart_xml");
+            chunk.put("page_number", 1);
+        });
+
+        assertThat(validator.validate(result))
+                .extracting(ConstraintViolation::getMessage)
+                .contains("source_format=pdf이면 page_number가 필요하고, 그 외에는 null이어야 합니다");
+    }
+
+    @Test
+    void failsWhenRequiredJsonFieldMissing() {
+        assertThatThrownBy(() -> readMutated(root -> ((ObjectNode) root).remove("document")))
+                .isInstanceOf(MismatchedInputException.class)
+                .hasMessageContaining("document");
+    }
+
+    private PreprocessResult readMutated(Consumer<JsonNode> mutator) throws Exception {
+        JsonNode root = objectMapper.readTree(validSection7Json());
+        mutator.accept(root);
+        return objectMapper.treeToValue(root, PreprocessResult.class);
+    }
+
+    private static String validSection7Json() {
+        return """
+                {
+                  "schema_version": "0.1",
+                  "parser_version": "0.1.0",
+                  "document": {
+                    "doc_id": "periodic_20250311000001",
+                    "corp_code": "00000001",
+                    "corp_name": "예시전자",
+                    "listed_name": "예시전자",
+                    "stock_code": "000001",
+                    "industry": "IT",
+                    "sector": "반도체·전자부품",
+                    "doc_group": "periodic",
+                    "doc_subtype": "annual",
+                    "report_nm": "사업보고서 (2024.12)",
+                    "rcept_no": "20250311000001",
+                    "rcept_dt": "2025-03-11",
+                    "flr_nm": "예시전자",
+                    "is_correction": false,
+                    "base_year": 2024,
+                    "base_month": 12,
+                    "source_path": "raw/periodic/예시전자/20250311000001_annual_2024_12",
+                    "manifest_file_format": "xml",
+                    "source_file_count": 1
+                  },
+                  "evidence_chunks": [
+                    {
+                      "chunk_id": "periodic_20250311000001:chunk:0000",
+                      "doc_id": "periodic_20250311000001",
+                      "sequence": 0,
+                      "content_type": "table",
+                      "text": "연결 포괄손익계산서 | 매출액 | 2024년 | 100,000백만원",
+                      "source_file": "raw/periodic/예시전자/20250311000001_annual_2024_12/20250311000001.xml",
+                      "source_format": "dart_xml",
+                      "page_number": null,
+                      "section_title": "재무에 관한 사항",
+                      "table_title": "연결 포괄손익계산서",
+                      "row_label": "매출액",
+                      "column_label": "2024년"
+                    }
+                  ],
+                  "extracted_facts": [
+                    {
+                      "fact_id": "periodic_20250311000001:fact:0000",
+                      "doc_id": "periodic_20250311000001",
+                      "chunk_id": "periodic_20250311000001:chunk:0000",
+                      "fact_key": "revenue",
+                      "label": "매출액",
+                      "value_type": "number",
+                      "raw_value": "100,000",
+                      "raw_unit": "백만원",
+                      "normalized_value": "100000000000",
+                      "normalized_unit": "KRW",
+                      "period_start": "2024-01-01",
+                      "period_end": "2024-12-31",
+                      "as_of_date": null,
+                      "period_basis": "cumulative",
+                      "scope": "consolidated"
+                    }
+                  ],
+                  "relations": []
+                }
+                """;
     }
 }

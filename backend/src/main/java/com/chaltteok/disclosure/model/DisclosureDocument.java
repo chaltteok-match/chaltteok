@@ -107,4 +107,16 @@ public record DisclosureDocument(
         }
         return baseYear != null && baseMonth != null;
     }
+
+    /**
+     * 정기공시가 아니면 {@code base_year}와 {@code base_month}는 null이어야 한다.
+     */
+    @JsonIgnore
+    @AssertTrue(message = "doc_group이 periodic이 아니면 base_year와 base_month는 null이어야 합니다")
+    public boolean isNonPeriodicBasePeriodAbsent() {
+        if (docGroup == null || docGroup == DocGroup.PERIODIC) {
+            return true;
+        }
+        return baseYear == null && baseMonth == null;
+    }
 }

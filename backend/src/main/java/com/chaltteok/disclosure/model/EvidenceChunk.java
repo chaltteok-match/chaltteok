@@ -31,6 +31,7 @@ public record EvidenceChunk(
 
         @JsonProperty(required = true)
         @NotNull
+        @Min(0)
         Integer sequence,
 
         @JsonProperty(required = true)

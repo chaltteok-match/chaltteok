@@ -82,6 +82,16 @@ class AnswerControllerTest {
                         .param("question_id", "Q-001")
                         .param("question", "질문"))
                 .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.question_id").value("Q-001"))
+                .andExpect(jsonPath("$.error_code").value("METHOD_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.retryable").value(false));
+    }
+
+    @Test
+    void returns405WithNullQuestionIdWhenMissing() throws Exception {
+        mockMvc.perform(post("/answer").param("question", "질문"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.question_id").value(nullValue()))
                 .andExpect(jsonPath("$.error_code").value("METHOD_NOT_ALLOWED"))
                 .andExpect(jsonPath("$.retryable").value(false));
     }

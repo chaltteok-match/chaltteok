@@ -24,6 +24,16 @@ management:
     health:
       show-details: when_authorized
 
+hcx:
+  enabled: ${HCX_ENABLED:false}
+  base-url: ${HCX_BASE_URL:https://clovastudio.stream.ntruss.com/v1/openai}
+  completions-path: ${HCX_COMPLETIONS_PATH:/chat/completions}
+  api-key: ${HCX_API_KEY:}
+  model: ${HCX_MODEL:HCX-005}
+  temperature: ${HCX_TEMPERATURE:0.1}
+  max-tokens: ${HCX_MAX_TOKENS:1024}
+  timeout-seconds: ${HCX_TIMEOUT_SECONDS:30}
+
 # DB 접속 정보(url/username/password)는 여기에 두지 않습니다.
 # local 프로필이 기본 활성이므로 application-local.yml 값을 사용합니다.
 # 자세한 실행 방법은 infra/README.md 참고.

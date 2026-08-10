@@ -1,28 +1,21 @@
 package com.chaltteok.answer;
 
-import com.chaltteok.answer.dto.AnswerResponse;
-import com.chaltteok.answer.dto.EvidenceDto;
-import java.util.List;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
+/**
+ * 질문 분류·답변 조립 진입점.
+ * 초기 구현(docs/api-contract.md §8.3)에서는 검색·HCX 없이 더미 {@link AnswerResult}를 반환한다.
+ */
 @Service
 public class AnswerService {
 
-    public AnswerResponse answer(String question) {
-        String normalizedQuestion = StringUtils.hasText(question)
-                ? question.trim()
-                : "(질문이 제공되지 않았습니다)";
-
-        return new AnswerResponse(
-                "임시 응답입니다. 공시 검색·계산·HyperCLOVA X 연동은 이후 단계에서 구현됩니다.",
-                List.of(new EvidenceDto(
-                        "skeleton-placeholder",
-                        "백엔드 스켈레톤",
-                        null,
-                        "question=" + normalizedQuestion
-                )),
-                "skeleton"
+    public AnswerResult answer(String questionId, String question) {
+        return new AnswerResult(
+                questionId,
+                question,
+                "",
+                "파라미터 검증 완료 → 더미 AnswerResult 반환 (검색·계산·HyperCLOVA X 미연동)",
+                "임시 응답입니다. 공시 검색·계산·HyperCLOVA X 연동은 이후 단계에서 구현됩니다."
         );
     }
 }

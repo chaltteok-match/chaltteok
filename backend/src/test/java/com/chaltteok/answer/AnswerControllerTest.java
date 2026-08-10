@@ -20,7 +20,8 @@ class AnswerControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void returnsDummySuccessResponse() throws Exception {
+    void returnsSuccessResponseFromAnswerService() throws Exception {
+        // Handler 미등록 시에도 Controller는 검색·LLM 없이 AnswerService 결과만 매핑한다.
         mockMvc.perform(get("/answer")
                         .param("question_id", "Q-001")
                         .param("question", "삼성전자 매출액은?"))

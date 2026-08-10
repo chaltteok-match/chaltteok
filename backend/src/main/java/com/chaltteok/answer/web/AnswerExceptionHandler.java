@@ -16,8 +16,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 
 /**
  * 평가 API 오류 응답 조립. docs/api-contract.md §7.
- * 503({@link ErrorCode#SERVICE_UNAVAILABLE})은 DB·HyperCLOVA X 연동 시 동일
- * {@link AnswerErrorResponse} 형식으로 확장한다.
  */
 @RestControllerAdvice
 public class AnswerExceptionHandler extends ResponseEntityExceptionHandler {
@@ -29,6 +27,15 @@ public class AnswerExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidAnswerRequestException.class)
     public ResponseEntity<AnswerErrorResponse> handleInvalidRequest(InvalidAnswerRequestException ex) {
         ErrorCode code = ErrorCode.INVALID_REQUEST;
+        return ResponseEntity
+                .status(code.httpStatus())
+                .body(AnswerErrorResponse.of(ex.questionId(), code, ex.getMessage()));
+    }
+
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<AnswerErrorResponse> handleServiceUnavailable(ServiceUnavailableException ex) {
+        log.warn("Service unavailable while processing request: {}", ex.getMessage());
+        ErrorCode code = ErrorCode.SERVICE_UNAVAILABLE;
         return ResponseEntity
                 .status(code.httpStatus())
                 .body(AnswerErrorResponse.of(ex.questionId(), code, ex.getMessage()));

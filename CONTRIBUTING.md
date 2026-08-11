@@ -19,6 +19,7 @@ Issue 생성
 | Issue | `[type] 내용` | `[docs] API 요청·응답 명세 초안 작성` |
 | Branch | `type/영문-작업명` | `docs/api-contract` |
 | PR | `type: 내용` | `docs: API 요청·응답 명세 초안 작성` |
+| Commit | `type: 내용` | `feat: Python 전처리 공통 모델 구현` |
 
 사용하는 type은 다음과 같다.
 
@@ -28,6 +29,8 @@ Issue 생성
 - `chore`: 설정 및 기타 작업
 - `test`: 테스트 추가·수정
 - `refactor`: 기능 변경 없는 코드 구조 개선
+
+Issue, Branch, PR, Commit에는 위 목록의 type만 사용한다. GitHub Actions 등 CI 환경을 추가하거나 수정하는 작업은 `chore`를 사용한다.
 
 ## 작업 및 병합 규칙
 

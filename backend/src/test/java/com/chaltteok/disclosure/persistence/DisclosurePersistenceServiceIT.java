@@ -47,6 +47,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Transactional
 class DisclosurePersistenceServiceIT {
 
+    @SuppressWarnings("resource") // @Testcontainers extension manages this container's lifecycle.
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
             .withDatabaseName("chaltteok")

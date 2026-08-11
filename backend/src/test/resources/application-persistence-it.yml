@@ -1,0 +1,17 @@
+# PostgreSQL 통합 테스트 전용. DataSource·JPA를 켜고 Testcontainers URL을 주입한다.
+spring:
+  autoconfigure:
+    exclude: []
+  jpa:
+    hibernate:
+      ddl-auto: create
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Seoul
+
+chaltteok:
+  disclosure:
+    persistence:
+      enabled: true

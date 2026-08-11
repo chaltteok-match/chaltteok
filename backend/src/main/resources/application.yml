@@ -12,6 +12,11 @@ spring:
         jdbc:
           time_zone: Asia/Seoul
 
+chaltteok:
+  disclosure:
+    persistence:
+      enabled: true
+
 server:
   port: 8080
 

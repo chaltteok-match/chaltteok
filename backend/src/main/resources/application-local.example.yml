@@ -13,3 +13,7 @@ spring:
     url: jdbc:postgresql://localhost:5432/chaltteok
     username: chaltteok
     password: change-me
+  jpa:
+    hibernate:
+      # 로컬 개발용. 운영 마이그레이션 도입 전까지 Entity 기준으로 스키마를 맞춘다.
+      ddl-auto: update

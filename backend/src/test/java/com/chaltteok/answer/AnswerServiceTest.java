@@ -102,6 +102,30 @@ class AnswerServiceTest {
     }
 
     @Test
+    void returnsPartialEvidenceWithoutCallingHcxWhenConclusionIsUnavailable() {
+        when(handlerSelector.hasRegisteredHandlers()).thenReturn(true);
+        when(handlerSelector.select(any())).thenReturn(Optional.of(answerHandler));
+        when(answerHandler.handle(any(), any())).thenReturn(AnswerHandlerResult.unavailable(
+                List.of(new RetrievedEvidence(
+                        "2025년 사업보고서",
+                        LocalDate.of(2026, 3, 20),
+                        "예시전자",
+                        "계약 체결 사실은 확인됨"
+                )),
+                "계약 공시 검색",
+                "후속 해지 여부를 확인할 근거가 부족함"
+        ));
+
+        AnswerResult result = answerService.answer("Q-PARTIAL", "계약이 해지되었나요?");
+
+        verify(hcxClient, never()).generate(any());
+        assertThat(result.retrievedContext()).contains("계약 체결 사실은 확인됨");
+        assertThat(result.thinkTrace())
+                .isEqualTo("계약 공시 검색 → 후속 해지 여부를 확인할 근거가 부족함");
+        assertThat(result.answer()).isEqualTo(AnswerService.ANSWER_UNAVAILABLE);
+    }
+
+    @Test
     void returnsUnavailableWhenNoHandlerRegistered() {
         when(handlerSelector.hasRegisteredHandlers()).thenReturn(false);
 

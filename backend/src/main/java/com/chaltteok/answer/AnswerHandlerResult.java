@@ -21,8 +21,24 @@ public record AnswerHandlerResult(
         return !evidences.isEmpty();
     }
 
+    public boolean isAnswerable() {
+        return hasEvidence() && !hasUnavailableReason();
+    }
+
+    private boolean hasUnavailableReason() {
+        return unavailableReason != null && !unavailableReason.isBlank();
+    }
+
     public static AnswerHandlerResult unavailable(String processSummary, String unavailableReason) {
         return new AnswerHandlerResult(List.of(), processSummary, unavailableReason);
+    }
+
+    public static AnswerHandlerResult unavailable(
+            List<RetrievedEvidence> partialEvidences,
+            String processSummary,
+            String unavailableReason
+    ) {
+        return new AnswerHandlerResult(partialEvidences, processSummary, unavailableReason);
     }
 
     public static AnswerHandlerResult of(List<RetrievedEvidence> evidences, String processSummary) {

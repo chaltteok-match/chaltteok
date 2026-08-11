@@ -64,7 +64,7 @@ public class AnswerService {
         String retrievedContext = RetrievedContextFormatter.format(handlerResult.evidences());
         String thinkTrace = resolveThinkTrace(handlerResult);
 
-        if (!handlerResult.hasEvidence()) {
+        if (!handlerResult.isAnswerable()) {
             return unavailable(questionId, question, retrievedContext, thinkTrace);
         }
 

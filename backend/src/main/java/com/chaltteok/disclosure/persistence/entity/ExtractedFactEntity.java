@@ -22,7 +22,9 @@ import java.time.LocalDate;
 @Table(
         name = "extracted_fact",
         indexes = {
-                @Index(name = "idx_extracted_fact_fact_key", columnList = "fact_key")
+                @Index(name = "idx_extracted_fact_fact_key", columnList = "fact_key"),
+                @Index(name = "idx_extracted_fact_doc_id", columnList = "doc_id"),
+                @Index(name = "idx_extracted_fact_chunk_id", columnList = "chunk_id")
         }
 )
 public class ExtractedFactEntity {

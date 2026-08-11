@@ -63,7 +63,9 @@ disclosure_relation_evidence_chunk (relation_id, chunk_id)
 - `ChangedField` → `DisclosureRelation` (ManyToOne, 필수)
 - 관계의 근거 chunk ID 목록은 문자열 컬렉션으로 저장한다. chunk 행이 아직 없거나 교차 문서 근거일 수 있어 FK는 강제하지 않는다.
 
-문서 삭제 시 `evidence_chunk`·`extracted_fact`는 orphanRemoval로 함께 제거한다. `disclosure_relation`은 두 문서를 가리키므로 문서 upsert 전에 해당 `doc_id`가 `original_doc_id` 또는 `related_doc_id`인 관계를 먼저 삭제한다.
+문서 삭제 시 `evidence_chunk`·`extracted_fact`는 orphanRemoval로 함께 제거한다. `disclosure_relation`은 두 문서를 가리키므로 문서 upsert 전에 해당 `doc_id`를 참조하는 관계를 임시로 삭제한 뒤 아래 재처리 정책에 따라 복구한다.
+
+한 `PreprocessResult`의 `relations`는 해당 전처리 문서가 정정·변경·해지·후속 공시인 관계만 소유한다. 따라서 각 관계의 `related_doc_id`는 `document.doc_id`와 같아야 한다.
 
 ## 4. Enum 저장 방식
 
@@ -76,7 +78,7 @@ disclosure_relation_evidence_chunk (relation_id, chunk_id)
 | `content_type` | `ContentType` | `TABLE` |
 | `source_format` | `SourceFormat` | `DART_XML` |
 | `value_type` | `ValueType` | `NUMBER` |
-| `period_basis` | `PeriodBasis` | `PERIOD` |
+| `period_basis` | `PeriodBasis` | `POINT_IN_TIME` |
 | `scope` | `Scope` | `CONSOLIDATED` |
 | `relation_type` | `RelationType` | `CORRECTION` |
 
@@ -88,15 +90,19 @@ JSON 직렬화 값(소문자 `periodic` 등)과 DB 저장 값(Enum 상수명 `PE
 
 동작:
 
-1. 해당 `doc_id`가 `original_doc_id` 또는 `related_doc_id`인 `disclosure_relation`(및 `changed_field`, 근거 chunk ID 컬렉션)을 삭제한다.
-2. 기존 `disclosure_document`를 삭제한다. cascade·orphanRemoval로 chunk·fact가 함께 제거된다.
-3. 새 `PreprocessResult`를 Entity로 변환해 다시 insert한다.
+1. 해당 `doc_id`가 `original_doc_id`인 기존 관계는 다른 후속 공시가 소유한 관계이므로 복구 대상으로 보존한다.
+2. 해당 `doc_id`가 `related_doc_id`인 기존 관계는 현재 전처리 결과가 소유하므로 새 `relations`로 교체한다.
+3. FK 제약을 지키기 위해 해당 문서를 참조하는 관계를 임시로 삭제한다.
+4. 기존 `disclosure_document`를 삭제한다. cascade·orphanRemoval로 chunk·fact가 함께 제거된다.
+5. 새 `PreprocessResult`를 Entity로 변환해 다시 insert한다.
+6. 1번에서 보존한 관계와 새 `relations`를 다시 저장한다.
 
 신규 insert만 하지 않는 이유:
 
 - `doc_id`는 코퍼스 문서의 안정적인 자연키다. 재처리마다 새 행을 만들면 동일 공시가 중복되고 검색·이력 판단이 깨진다.
 - 파서 버전·chunk 분할이 바뀌면 하위 행 일부만 갱신하기보다 문서 단위로 교체하는 편이 일관되다.
 - PK를 `doc_id`로 쓰므로 단순 insert는 두 번째 적재에서 충돌한다.
+- 원본 공시를 재처리하더라도 이미 저장된 정정·후속 관계는 다른 문서의 결과이므로 삭제하지 않는다.
 
 관계 저장 전제:
 
@@ -111,10 +117,17 @@ JSON 직렬화 값(소문자 `periodic` 등)과 DB 저장 값(Enum 상수명 `PE
 | `disclosure_document` | `idx_disclosure_document_corp_name` | `corp_name` | 기업명 검색 |
 | `disclosure_document` | `idx_disclosure_document_doc_group` | `doc_group` | 공시 유형 필터 |
 | `disclosure_document` | `idx_disclosure_document_rcept_dt` | `rcept_dt` | 공시일 범위·정렬 |
+| `evidence_chunk` | `idx_evidence_chunk_doc_id` | `doc_id` | 문서별 근거 조회 |
 | `extracted_fact` | `idx_extracted_fact_fact_key` | `fact_key` | 구조화 사실 키 조회 |
+| `extracted_fact` | `idx_extracted_fact_doc_id` | `doc_id` | 문서별 사실 조회 |
+| `extracted_fact` | `idx_extracted_fact_chunk_id` | `chunk_id` | 근거별 사실 조회 |
 | `disclosure_relation` | `idx_disclosure_relation_event_key` | `event_key` | 이벤트 단위 이력 조회 |
+| `disclosure_relation` | `idx_disclosure_relation_original_doc_id` | `original_doc_id` | 원본 공시의 후속 관계 조회 |
+| `disclosure_relation` | `idx_disclosure_relation_related_doc_id` | `related_doc_id` | 후속 공시의 관계 조회 |
+| `changed_field` | `idx_changed_field_relation_id` | `relation_id` | 관계별 변경 필드 조회 |
+| `disclosure_relation_evidence_chunk` | `idx_disclosure_relation_evidence_relation_id` | `relation_id` | 관계별 근거 ID 조회 |
 
-FK 컬럼(`evidence_chunk.doc_id`, `extracted_fact.doc_id`, `extracted_fact.chunk_id`, `disclosure_relation.original_doc_id`, `disclosure_relation.related_doc_id`, `changed_field.relation_id`)은 DBMS/Hibernate가 생성하는 FK 인덱스를 활용한다.
+PostgreSQL은 참조하는 쪽의 FK 인덱스를 자동 생성하지 않으므로, 현재 저장·조회 경로에서 사용하는 FK 컬럼에는 위 인덱스를 명시적으로 생성한다.
 
 ## 7. 패키지·계층
 

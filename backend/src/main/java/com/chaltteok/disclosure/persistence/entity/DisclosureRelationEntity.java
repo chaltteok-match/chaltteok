@@ -26,7 +26,9 @@ import java.util.List;
 @Table(
         name = "disclosure_relation",
         indexes = {
-                @Index(name = "idx_disclosure_relation_event_key", columnList = "event_key")
+                @Index(name = "idx_disclosure_relation_event_key", columnList = "event_key"),
+                @Index(name = "idx_disclosure_relation_original_doc_id", columnList = "original_doc_id"),
+                @Index(name = "idx_disclosure_relation_related_doc_id", columnList = "related_doc_id")
         }
 )
 public class DisclosureRelationEntity {
@@ -62,7 +64,11 @@ public class DisclosureRelationEntity {
     @ElementCollection
     @CollectionTable(
             name = "disclosure_relation_evidence_chunk",
-            joinColumns = @JoinColumn(name = "relation_id")
+            joinColumns = @JoinColumn(name = "relation_id"),
+            indexes = @Index(
+                    name = "idx_disclosure_relation_evidence_relation_id",
+                    columnList = "relation_id"
+            )
     )
     @Column(name = "chunk_id", nullable = false, length = 256)
     @OrderColumn(name = "chunk_order")

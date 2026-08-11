@@ -6,6 +6,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -14,7 +15,10 @@ import jakarta.persistence.Table;
  * 관계에서 변경된 필드 영속 모델. docs/architecture/disclosure-persistence.md
  */
 @Entity
-@Table(name = "changed_field")
+@Table(
+        name = "changed_field",
+        indexes = @Index(name = "idx_changed_field_relation_id", columnList = "relation_id")
+)
 public class ChangedFieldEntity {
 
     @Id

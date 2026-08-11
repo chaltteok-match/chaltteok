@@ -43,3 +43,16 @@ chaltteok_etl/
 코퍼스 원문, 전처리 결과와 API 키는 로컬에서만 관리하고 저장소에 커밋하지 않습니다.
 
 Python 공통 출력 모델은 [`docs/data-model.md`](../docs/data-model.md)의 `PreprocessResult` 계약을 기준으로 구현합니다. 전처리 단계에서는 최종 API 답변이나 `think_trace`를 생성하지 않습니다.
+
+## 공통 출력 모델 사용
+
+네 공시 유형 파서는 모두 `chaltteok_etl.common.PreprocessResult`를 최종 출력 모델로 사용합니다. 모델 생성 시 문서 코드와 날짜, NFC 논리 경로, chunk·fact·relation 참조 관계를 검증합니다.
+
+```python
+from chaltteok_etl.common import PreprocessResult
+
+result = PreprocessResult.model_validate(parsed_document)
+json_line = result.model_dump_json()
+```
+
+여러 문서를 저장할 때는 `json_line` 하나를 한 줄로 기록한 UTF-8 JSON Lines 파일을 만듭니다. 원문 텍스트와 `raw_value`는 보존하고, 기업 식별값과 논리 경로만 NFC로 정규화합니다.

@@ -87,6 +87,27 @@ public class PreprocessResultMapper {
         return entity;
     }
 
+    public DisclosureRelation toRelationModel(DisclosureRelationEntity entity) {
+        return new DisclosureRelation(
+                entity.getRelationId(),
+                entity.getEventKey(),
+                entity.getOriginalDocument().getDocId(),
+                entity.getRelatedDocument().getDocId(),
+                entity.getRelationType(),
+                entity.getPreviousStatus(),
+                entity.getCurrentStatus(),
+                entity.getChangedFields().stream()
+                        .map(field -> new ChangedField(
+                                field.getFactKey(),
+                                field.getBeforeValue(),
+                                field.getAfterValue(),
+                                field.getUnit()
+                        ))
+                        .toList(),
+                new ArrayList<>(entity.getEvidenceChunkIds())
+        );
+    }
+
     private EvidenceChunkEntity toChunkEntity(EvidenceChunk chunk) {
         EvidenceChunkEntity entity = new EvidenceChunkEntity();
         entity.setChunkId(chunk.chunkId());

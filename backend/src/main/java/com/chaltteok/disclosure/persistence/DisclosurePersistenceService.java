@@ -7,7 +7,9 @@ import com.chaltteok.disclosure.persistence.entity.DisclosureRelationEntity;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureRelationRepository;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,7 @@ public class DisclosurePersistenceService {
 
         List<DisclosureRelationEntity> existingRelations =
                 relationRepository.findByOriginalDocumentDocIdOrRelatedDocumentDocId(docId, docId);
+        List<DisclosureRelation> relationsToSave = collectRelationsToSave(docId, result, existingRelations);
         if (!existingRelations.isEmpty()) {
             relationRepository.deleteAll(existingRelations);
             relationRepository.flush();
@@ -58,7 +61,7 @@ public class DisclosurePersistenceService {
         DisclosureDocumentEntity saved = documentRepository.save(document);
 
         List<DisclosureRelationEntity> relations = new ArrayList<>();
-        for (DisclosureRelation relation : result.relations()) {
+        for (DisclosureRelation relation : relationsToSave) {
             relations.add(mapRelation(relation));
         }
         if (!relations.isEmpty()) {
@@ -76,6 +79,30 @@ public class DisclosurePersistenceService {
     @Transactional(readOnly = true)
     public List<DisclosureRelationEntity> findRelationsByDocId(String docId) {
         return relationRepository.findByOriginalDocumentDocIdOrRelatedDocumentDocId(docId, docId);
+    }
+
+    private List<DisclosureRelation> collectRelationsToSave(
+            String docId,
+            PreprocessResult result,
+            List<DisclosureRelationEntity> existingRelations
+    ) {
+        Map<String, DisclosureRelation> relationsById = new LinkedHashMap<>();
+
+        existingRelations.stream()
+                .filter(relation -> !docId.equals(relation.getRelatedDocument().getDocId()))
+                .map(mapper::toRelationModel)
+                .forEach(relation -> relationsById.put(relation.relationId(), relation));
+
+        for (DisclosureRelation relation : result.relations()) {
+            if (!docId.equals(relation.relatedDocId())) {
+                throw new IllegalArgumentException(
+                        "relations.related_doc_id는 현재 전처리 문서와 같아야 합니다: "
+                                + relation.relationId());
+            }
+            relationsById.put(relation.relationId(), relation);
+        }
+
+        return new ArrayList<>(relationsById.values());
     }
 
     private DisclosureRelationEntity mapRelation(DisclosureRelation relation) {

@@ -1,6 +1,7 @@
 package com.chaltteok.disclosure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.chaltteok.disclosure.model.ChangedField;
 import com.chaltteok.disclosure.model.DisclosureDocument;
@@ -212,6 +213,40 @@ class DisclosurePersistenceServiceIT {
 
         assertThat(persistenceService.findRelationsByDocId("exchange_20240201000002")).hasSize(1);
         assertThat(documentRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void reprocessingOriginalPreservesExistingRelation() {
+        persistenceService.save(originalDocumentResult());
+        persistenceService.save(relatedDocumentResult());
+
+        persistenceService.save(originalDocumentResult());
+
+        assertThat(persistenceService.findRelationsByDocId("exchange_20240101000001"))
+                .singleElement()
+                .satisfies(relation -> {
+                    assertThat(relation.getOriginalDocument().getDocId())
+                            .isEqualTo("exchange_20240101000001");
+                    assertThat(relation.getRelatedDocument().getDocId())
+                            .isEqualTo("exchange_20240201000002");
+                    assertThat(relation.getChangedFields()).hasSize(1);
+                });
+    }
+
+    @Test
+    void rejectsRelationOwnedByDifferentDocument() {
+        PreprocessResult invalid = new PreprocessResult(
+                "0.1",
+                "0.1.0",
+                originalDocument(),
+                List.of(originalChunk()),
+                List.of(originalFact()),
+                List.of(relatedRelation())
+        );
+
+        assertThatThrownBy(() -> persistenceService.save(invalid))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("related_doc_id");
     }
 
     private static PreprocessResult originalDocumentResult() {

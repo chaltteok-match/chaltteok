@@ -1,5 +1,33 @@
 # Backend 실행 안내
 
+## 전처리 결과 JSONL 적재
+
+Python 전처리가 만든 `PreprocessResult` JSONL을 PostgreSQL에 적재합니다.
+`load` 프로필에서만 동작하며, 평가 API 서버로 뜨지 않고 적재만 하고 종료합니다.
+
+PostgreSQL이 떠 있어야 하고, 테이블이 만들어져 있어야 합니다(`infra/README.md` 참고).
+운영 마이그레이션 도입 전까지는 `application-local.yml`의 `spring.jpa.hibernate.ddl-auto: update`가
+Entity 기준으로 스키마를 맞춥니다. 이 설정이 빠져 있으면 `relation "disclosure_document" does not exist`로 실패합니다.
+
+```bash
+cd backend
+./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/result.jsonl'
+```
+
+| 설정 | 설명 |
+| --- | --- |
+| `chaltteok.load.path` | 적재할 JSONL 파일 경로. 1줄 = `PreprocessResult` 1건 |
+
+동작 규칙은 다음과 같습니다.
+
+- 한 줄이 실패해도 나머지를 계속 적재하고, 실패한 **줄 번호와 `doc_id`**를 모아 보고합니다.
+- 적재가 끝나면 총 건수, 성공·실패 건수, 근거·사실·관계 수를 요약해 출력합니다.
+- **실패가 한 건이라도 있으면 종료 코드가 0이 아닙니다**(`docs/data-model.md` §9).
+- 같은 `doc_id`를 다시 적재하면 기존 행을 교체합니다(upsert). 같은 파일을 두 번 적재해도 결과가 같습니다.
+- 계약에 없는 필드가 섞여 있으면 조용히 무시하지 않고 그 줄을 실패로 처리합니다.
+
+`load` 프로필이 아니면 적재 러너와 로더 빈이 등록되지 않아 `/answer` 동작에 영향을 주지 않습니다.
+
 ## HyperCLOVA X 클라이언트
 
 HyperCLOVA X 클라이언트는 기본적으로 비활성화되어 있어 API 키가 없는 로컬 환경과 CI에서도 애플리케이션과 테스트를 실행할 수 있습니다.

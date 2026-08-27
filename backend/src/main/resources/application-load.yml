@@ -1,0 +1,11 @@
+# JSONL 적재 전용 프로필. 평가 API 서버로 뜨지 않고 적재만 하고 종료한다.
+# 사용법은 backend/README.md 참고.
+spring:
+  main:
+    # 웹 서버를 띄우지 않으므로 ApplicationRunner가 끝나면 애플리케이션이 종료된다.
+    web-application-type: none
+
+chaltteok:
+  disclosure:
+    persistence:
+      enabled: true

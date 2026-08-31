@@ -227,6 +227,27 @@ class JsonlDisclosureLoaderIT {
         assertThat(documentRepository.count()).isZero();
     }
 
+    @Test
+    void reportsFailureWhenRelationPrecedesItsOriginalDocument() throws IOException {
+        // README에 적은 줄 순서 제약을 고정한다. 원본이 뒷줄이면 정정 문서 줄이 실패한다.
+        String original = "periodic_20240312000736";
+        Path path = write(List.of(withRelation(sampleLines.get(0), original), sampleLines.get(1)));
+
+        LoadSummary summary = loader.load(path);
+
+        assertThat(summary.failed()).isEqualTo(1);
+        assertThat(summary.failures().get(0).lineNumber()).isEqualTo(1);
+        assertThat(summary.failures().get(0).docId()).isEqualTo("periodic_20250311001085");
+        assertThat(summary.failures().get(0).reason()).contains("original_doc_id");
+        // 나머지 줄은 저장되므로, 순서를 고쳐 다시 적재하면 복구된다.
+        assertThat(documentRepository.existsById(original)).isTrue();
+
+        LoadSummary retry = loader.load(
+                write(List.of(sampleLines.get(1), withRelation(sampleLines.get(0), original))));
+        assertThat(retry.hasFailure()).isFalse();
+        assertThat(relationRepository.count()).isEqualTo(1);
+    }
+
     /** 전처리 결과 한 줄에 정정 관계와 변경 필드를 붙인다. */
     private String withRelation(String documentLine, String originalDocId) throws IOException {
         ObjectNode root = (ObjectNode) objectMapper.readTree(documentLine);

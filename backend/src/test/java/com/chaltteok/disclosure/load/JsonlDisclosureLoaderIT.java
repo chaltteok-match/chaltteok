@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
+import com.chaltteok.disclosure.persistence.repository.ChangedFieldRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureRelationRepository;
 import com.chaltteok.disclosure.persistence.repository.EvidenceChunkRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
@@ -65,6 +68,12 @@ class JsonlDisclosureLoaderIT {
     private DisclosureRelationRepository relationRepository;
 
     @Autowired
+    private ChangedFieldRepository changedFieldRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
     private EvidenceChunkRepository evidenceChunkRepository;
 
     @Autowired
@@ -77,18 +86,27 @@ class JsonlDisclosureLoaderIT {
 
     @BeforeEach
     void setUp() throws IOException {
-        // fact가 chunk를, relation이 document를 참조하므로 외래키 역순으로 지운다.
-        // cascade에 맡기면 orphanRemoval이 chunk를 먼저 끊어 fact.chunk_id가 null이 된다.
-        relationRepository.deleteAllInBatch();
-        extractedFactRepository.deleteAllInBatch();
-        evidenceChunkRepository.deleteAllInBatch();
-        documentRepository.deleteAllInBatch();
+        clearAll();
         try (InputStream stream = new ClassPathResource(SAMPLE).getInputStream()) {
             sampleLines = new String(stream.readAllBytes(), StandardCharsets.UTF_8)
                     .lines()
                     .filter(line -> !line.isBlank())
                     .toList();
         }
+    }
+
+    /**
+     * 외래키 역순으로 지운다.
+     * {@code deleteAllInBatch()}는 cascade를 타지 않으므로 자식 테이블을 직접 먼저 비워야 한다.
+     * changed_field → disclosure_relation → extracted_fact → evidence_chunk → disclosure_document 순.
+     * cascade에 맡기면 orphanRemoval이 chunk를 먼저 끊어 fact.chunk_id가 null이 된다.
+     */
+    private void clearAll() {
+        changedFieldRepository.deleteAllInBatch();
+        relationRepository.deleteAllInBatch();
+        extractedFactRepository.deleteAllInBatch();
+        evidenceChunkRepository.deleteAllInBatch();
+        documentRepository.deleteAllInBatch();
     }
 
     private Path write(List<String> lines) throws IOException {
@@ -174,6 +192,53 @@ class JsonlDisclosureLoaderIT {
 
         assertThat(summary.totalRecords()).isEqualTo(2);
         assertThat(summary.succeeded()).isEqualTo(2);
+    }
+
+    @Test
+    void 정정관계와_변경필드가_있는_JSONL도_적재하고_정리한다() throws IOException {
+        // 관계는 원본 문서가 먼저 저장되어 있어야 하므로 2023년 보고서를 앞 줄에 둔다.
+        String original = "periodic_20240312000736";
+        Path path = write(List.of(sampleLines.get(1), withRelation(sampleLines.get(0), original)));
+
+        LoadSummary summary = loader.load(path);
+
+        assertThat(summary.hasFailure()).isFalse();
+        assertThat(summary.relations()).isEqualTo(1);
+        assertThat(relationRepository.count()).isEqualTo(1);
+        assertThat(changedFieldRepository.count()).isEqualTo(1);
+
+        // 관계 자식 테이블까지 정리되어야 다음 테스트가 외래키 위반 없이 시작된다.
+        clearAll();
+        assertThat(changedFieldRepository.count()).isZero();
+        assertThat(relationRepository.count()).isZero();
+        assertThat(documentRepository.count()).isZero();
+    }
+
+    /** 전처리 결과 한 줄에 정정 관계와 변경 필드를 붙인다. */
+    private String withRelation(String documentLine, String originalDocId) throws IOException {
+        ObjectNode root = (ObjectNode) objectMapper.readTree(documentLine);
+        String docId = root.path("document").path("doc_id").asText();
+        String chunkId = root.path("evidence_chunks").get(0).path("chunk_id").asText();
+
+        ObjectNode changedField = objectMapper.createObjectNode();
+        changedField.put("fact_key", "revenue");
+        changedField.put("before_value", "258935494000000");
+        changedField.put("after_value", "300870903000000");
+        changedField.put("unit", "KRW");
+
+        ObjectNode relation = objectMapper.createObjectNode();
+        relation.put("relation_id", originalDocId + ":" + docId + ":correction");
+        relation.put("event_key", "periodic-correction-test");
+        relation.put("original_doc_id", originalDocId);
+        relation.put("related_doc_id", docId);
+        relation.put("relation_type", "correction");
+        relation.putNull("previous_status");
+        relation.putNull("current_status");
+        relation.set("changed_fields", objectMapper.createArrayNode().add(changedField));
+        relation.set("evidence_chunk_ids", objectMapper.createArrayNode().add(chunkId));
+
+        root.set("relations", objectMapper.createArrayNode().add(relation));
+        return objectMapper.writeValueAsString(root);
     }
 
     @Test

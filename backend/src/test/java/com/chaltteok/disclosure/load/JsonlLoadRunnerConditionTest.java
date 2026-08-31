@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Configuration;
 class JsonlLoadRunnerConditionTest {
 
     @Test
-    void load_프로필이_아니면_러너가_등록되지_않는다() {
+    void doesNotRegisterRunnerWithoutLoadProfile() {
         new ApplicationContextRunner()
                 .withPropertyValues("chaltteok.disclosure.persistence.enabled=true")
                 .withUserConfiguration(StubDependencies.class, LoadComponents.class)
@@ -26,7 +26,7 @@ class JsonlLoadRunnerConditionTest {
     }
 
     @Test
-    void load_프로필이면_러너가_등록된다() {
+    void registersRunnerWithLoadProfile() {
         new ApplicationContextRunner()
                 .withPropertyValues(
                         "spring.profiles.active=load",
@@ -38,7 +38,7 @@ class JsonlLoadRunnerConditionTest {
     }
 
     @Test
-    void 영속화가_꺼져_있으면_로더가_등록되지_않는다() {
+    void doesNotRegisterLoaderWhenPersistenceDisabled() {
         new ApplicationContextRunner()
                 .withPropertyValues("chaltteok.disclosure.persistence.enabled=false")
                 .withUserConfiguration(StubDependencies.class, LoadComponents.class)
@@ -46,7 +46,7 @@ class JsonlLoadRunnerConditionTest {
     }
 
     @Test
-    void 경로를_주지_않으면_적재를_시작하지_않는다() {
+    void failsWhenLoadPathMissing() {
         JsonlLoadProperties properties = new JsonlLoadProperties();
         JsonlLoadRunner runner = new JsonlLoadRunner(mock(JsonlDisclosureLoader.class), properties);
 

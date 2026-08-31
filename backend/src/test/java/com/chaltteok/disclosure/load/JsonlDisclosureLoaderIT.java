@@ -116,7 +116,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 전처리_출력을_읽어_문서와_근거와_사실을_저장한다() throws IOException {
+    void savesDocumentsChunksAndFactsFromPreprocessOutput() throws IOException {
         LoadSummary summary = loader.load(write(sampleLines));
 
         assertThat(summary.totalRecords()).isEqualTo(2);
@@ -131,7 +131,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 저장한_값이_전처리_결과와_일치한다() throws IOException {
+    void storedValuesMatchPreprocessOutput() throws IOException {
         loader.load(write(sampleLines));
 
         DisclosureDocumentEntity document =
@@ -152,7 +152,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 같은_파일을_두_번_적재해도_결과가_같다() throws IOException {
+    void reloadingSameFileKeepsCountsUnchanged() throws IOException {
         Path path = write(sampleLines);
         loader.load(path);
         LoadSummary second = loader.load(path);
@@ -164,7 +164,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 한_줄이_실패해도_나머지를_적재하고_줄_번호와_doc_id를_보고한다() throws IOException {
+    void reportsLineNumberAndDocIdWhenOneLineFails() throws IOException {
         String broken = sampleLines.get(0).replace("\"schema_version\":\"0.1\"", "\"schema_version\":\"\"");
         LoadSummary summary = loader.load(write(List.of(broken, sampleLines.get(1))));
 
@@ -177,7 +177,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 계약에_없는_필드가_있으면_실패로_보고한다() throws IOException {
+    void reportsFailureForFieldOutsideContract() throws IOException {
         String extra = sampleLines.get(0).replaceFirst("\\{", "{\"unexpected_field\":1,");
         LoadSummary summary = loader.load(write(List.of(extra)));
 
@@ -187,7 +187,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 빈_줄은_건너뛴다() throws IOException {
+    void skipsBlankLines() throws IOException {
         LoadSummary summary = loader.load(write(List.of(sampleLines.get(0), "", "   ", sampleLines.get(1))));
 
         assertThat(summary.totalRecords()).isEqualTo(2);
@@ -195,7 +195,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 정정관계와_변경필드가_있는_JSONL도_적재하고_정리한다() throws IOException {
+    void loadsAndClearsRelationWithChangedFields() throws IOException {
         // 관계는 원본 문서가 먼저 저장되어 있어야 하므로 2023년 보고서를 앞 줄에 둔다.
         String original = "periodic_20240312000736";
         Path path = write(List.of(sampleLines.get(1), withRelation(sampleLines.get(0), original)));
@@ -242,7 +242,7 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
-    void 파일이_없으면_적재를_시작하지_않는다() {
+    void failsWhenFileMissing() {
         assertThatThrownBy(() -> loader.load(tempDir.resolve("없는파일.jsonl")))
                 .isInstanceOf(JsonlLoadException.class)
                 .hasMessageContaining("없습니다");

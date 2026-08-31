@@ -13,7 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -56,11 +58,11 @@ public class JsonlDisclosureLoader {
         }
 
         List<LoadFailure> failures = new ArrayList<>();
+        // 같은 doc_id를 다시 만나면 저장은 upsert로 교체된다. 요약도 줄 단위로 더하지 않고
+        // 문서 단위 최신값으로 집계해야 실제 적재 결과와 어긋나지 않는다.
+        Map<String, SavedCounts> savedPerDocument = new LinkedHashMap<>();
         int totalRecords = 0;
         int succeeded = 0;
-        int chunks = 0;
-        int facts = 0;
-        int relations = 0;
 
         try (BufferedReader reader = Files.newBufferedReader(jsonlPath, StandardCharsets.UTF_8)) {
             String line;
@@ -75,9 +77,7 @@ public class JsonlDisclosureLoader {
                     PreprocessResult result = read(line);
                     persistenceService.save(result);
                     succeeded++;
-                    chunks += result.evidenceChunks().size();
-                    facts += result.extractedFacts().size();
-                    relations += result.relations().size();
+                    savedPerDocument.put(result.document().docId(), SavedCounts.of(result));
                 } catch (RuntimeException exception) {
                     failures.add(new LoadFailure(lineNumber, docIdOf(line), reasonOf(exception)));
                 }
@@ -86,10 +86,30 @@ public class JsonlDisclosureLoader {
             throw new JsonlLoadException("JSONL 파일을 읽지 못했습니다: " + jsonlPath, exception);
         }
 
+        int chunks = 0;
+        int facts = 0;
+        int relations = 0;
+        for (SavedCounts counts : savedPerDocument.values()) {
+            chunks += counts.evidenceChunks();
+            facts += counts.extractedFacts();
+            relations += counts.relations();
+        }
+
         LoadSummary summary = new LoadSummary(
-                totalRecords, succeeded, succeeded, chunks, facts, relations, failures);
+                totalRecords, succeeded, savedPerDocument.size(), chunks, facts, relations, failures);
         log.info("{}", summary.describe());
         return summary;
+    }
+
+    /** 문서 1건이 남긴 행 수. 같은 doc_id를 다시 적재하면 이 값으로 교체된다. */
+    private record SavedCounts(int evidenceChunks, int extractedFacts, int relations) {
+
+        static SavedCounts of(PreprocessResult result) {
+            return new SavedCounts(
+                    result.evidenceChunks().size(),
+                    result.extractedFacts().size(),
+                    result.relations().size());
+        }
     }
 
     private PreprocessResult read(String line) {

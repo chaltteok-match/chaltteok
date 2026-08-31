@@ -4,6 +4,14 @@ import java.util.List;
 
 /**
  * 적재 1회의 결과 요약. docs/data-model.md §9가 요구하는 실행 요약이다.
+ *
+ * @param totalRecords 읽은 줄 수(빈 줄 제외)
+ * @param succeeded 저장에 성공한 줄 수
+ * @param documents 실제로 적재된 서로 다른 문서 수. 같은 {@code doc_id}가 여러 줄에 있으면 1건으로 센다
+ * @param evidenceChunks 적재된 문서들의 근거 수
+ * @param extractedFacts 적재된 문서들의 사실 수
+ * @param relations 적재된 문서들이 선언한 관계 수
+ * @param failures 실패한 줄 목록
  */
 public record LoadSummary(
         int totalRecords,

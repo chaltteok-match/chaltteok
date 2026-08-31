@@ -164,6 +164,19 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
+    void countsRepeatedDocIdOnceInSummary() throws IOException {
+        // 같은 doc_id가 두 줄이면 저장은 upsert로 1건이다. 요약도 1건으로 보고해야 한다.
+        LoadSummary summary = loader.load(write(List.of(sampleLines.get(0), sampleLines.get(0))));
+
+        assertThat(summary.totalRecords()).isEqualTo(2);
+        assertThat(summary.succeeded()).isEqualTo(2);
+        assertThat(summary.documents()).isEqualTo(1);
+        assertThat(summary.documents()).isEqualTo((int) documentRepository.count());
+        assertThat(summary.evidenceChunks()).isEqualTo((int) evidenceChunkRepository.count());
+        assertThat(summary.extractedFacts()).isEqualTo((int) extractedFactRepository.count());
+    }
+
+    @Test
     void reportsLineNumberAndDocIdWhenOneLineFails() throws IOException {
         String broken = sampleLines.get(0).replace("\"schema_version\":\"0.1\"", "\"schema_version\":\"\"");
         LoadSummary summary = loader.load(write(List.of(broken, sampleLines.get(1))));

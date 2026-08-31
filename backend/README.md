@@ -26,7 +26,12 @@ cd backend
 - 같은 `doc_id`를 다시 적재하면 기존 행을 교체합니다(upsert). 같은 파일을 두 번 적재해도 결과가 같습니다.
 - 계약에 없는 필드가 섞여 있으면 조용히 무시하지 않고 그 줄을 실패로 처리합니다.
 
-`load` 프로필이 아니면 적재 러너와 로더 빈이 등록되지 않아 `/answer` 동작에 영향을 주지 않습니다.
+`load` 프로필을 켜지 않으면 적재가 시작되지 않습니다. 적재를 실행하는 `JsonlLoadRunner`가
+`load` 프로필에서만 등록되기 때문입니다. 평가 API로 띄운 서버는 적재 동작을 하지 않습니다.
+
+적재 기능 자체(`JsonlDisclosureLoader`)는 `chaltteok.disclosure.persistence.enabled=true`이면
+프로필과 무관하게 빈으로 존재합니다. 다만 이를 호출하는 것은 위 러너뿐이므로,
+`load` 없이 실행하면 아무것도 적재되지 않습니다.
 
 ## HyperCLOVA X 클라이언트
 

@@ -13,6 +13,7 @@ from chaltteok_etl.common import (
     PreprocessResult,
     Scope,
     SourceFormat,
+    ValueType,
 )
 from chaltteok_etl.material import ACODE_FACT_KEYS, parse_paid_in_capital_increase
 from chaltteok_etl.material.paid_in_capital import PAID_IN_CAPITAL_DOCUMENT_ACODE

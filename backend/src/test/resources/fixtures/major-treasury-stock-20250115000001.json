@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.1",
+  "parser_version": "0.1.0",
+  "document": {
+    "doc_id": "major_20250115000001",
+    "corp_code": "00126566",
+    "corp_name": "한화에어로스페이스",
+    "listed_name": "한화에어로스페이스",
+    "stock_code": "012450",
+    "industry": "제조업",
+    "sector": "기계·장비",
+    "doc_group": "major",
+    "doc_subtype": null,
+    "report_nm": "주요사항보고서(자기주식취득결정)",
+    "rcept_no": "20250115000001",
+    "rcept_dt": "2025-01-15",
+    "flr_nm": "한화에어로스페이스",
+    "is_correction": false,
+    "base_year": null,
+    "base_month": null,
+    "source_path": "raw/major/한화에어로스페이스/20250115000001",
+    "manifest_file_format": "xml",
+    "source_file_count": 1
+  },
+  "evidence_chunks": [
+    {
+      "chunk_id": "major_20250115000001:chunk:0000",
+      "doc_id": "major_20250115000001",
+      "sequence": 0,
+      "content_type": "paragraph",
+      "text": "자기주식 취득 결정을 공시한다.",
+      "source_file": "raw/major/한화에어로스페이스/20250115000001/20250115000001.xml",
+      "source_format": "dart_xml",
+      "page_number": null,
+      "section_title": "자기주식 취득",
+      "table_title": null,
+      "row_label": null,
+      "column_label": null
+    }
+  ],
+  "extracted_facts": [],
+  "relations": []
+}

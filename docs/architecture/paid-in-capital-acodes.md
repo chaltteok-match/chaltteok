@@ -1,0 +1,59 @@
+# 유상증자결정 ACODE와 자금조달 목적 매핑
+
+- 문서 상태: Draft v0.1
+- 관련 흐름: `feat/material-answer-flow`
+- 대상 문서: `raw/major/한화에어로스페이스/20250408000012`
+- 관련 구현: `preprocess/chaltteok_etl/material/paid_in_capital.py`
+
+## 1. 목적
+
+유상증자결정 원문의 ACODE를 비교한 결과와, 전처리 `fact_key` 매핑의 근거를 남긴다.
+총 조달금액을 묻는 질문과 목적별 금액을 묻는 질문을 혼동하지 않기 위함이다.
+
+## 2. 서식 식별
+
+| 위치 | 값 | 의미 |
+| --- | --- | --- |
+| `DOCUMENT-NAME` 텍스트 | `주요사항보고서(유상증자결정)` | 사람이 읽는 공시명 |
+| `DOCUMENT-NAME` `ACODE` | `11306` | 유상증자결정 서식 코드 |
+
+파서는 텍스트(`유상증자결정`)와 `ACODE=11306`을 함께 검사한다. 자기주식취득 등 다른 서식은 파싱하지 않는다.
+
+## 3. 자금조달 목적 6항목
+
+원문 「4. 자금조달의 목적」에는 **총액 필드가 없다.** 목적별 금액만 있다.
+`ANC_ACQ_AMT`의 영문 라벨은 `Acquisition of securities issued by other corporations`이며
+총 조달금액이 아니라 **타법인 증권취득자금**이다.
+
+| 원문 항목 | ACODE | `fact_key` |
+| --- | --- | --- |
+| 시설자금 | `FND_USE1` | `fundraising_purpose_facility` |
+| 영업양수자금 | `FND_USE_SQ` | `fundraising_purpose_business_acquisition` |
+| 운영자금 | `FND_USE2` | `fundraising_purpose_operating` |
+| 채무상환자금 | `FND_USE_RD` | `fundraising_purpose_debt_repayment` |
+| 타법인 증권취득자금 | `ANC_ACQ_AMT` | `fundraising_purpose_securities_acquisition` |
+| 기타자금 | `FND_USE3` | `fundraising_purpose_other` |
+
+값이 `"-"`이면 `ExtractedFact`를 만들지 않는다. 한화에어로스페이스 `20250408000012`에서는
+시설자금 700,020,800,000원과 타법인 증권취득자금 1,600,000,000,000원만 생성된다.
+
+기업마다 문서 전체 ACODE 개수는 다르다. 한화에어로스페이스·삼성SDI·OCI홀딩스·고려아연
+유상증자결정 원문을 비교했을 때 확인 범위는 24~72개다. 목적 6항목 ACODE는 공통이다.
+
+## 4. 대표 질문
+
+확정 질문:
+
+> 한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?
+
+정답 근거: `rcept_no=20250408000012`, `ANC_ACQ_AMT`, 원문 1,600,000,000,000원.
+
+「예정 자금 조달금액」처럼 총액을 묻는 질문은 이 스키마만으로는 답할 수 없다.
+목적별 fact 합산은 별도 이슈로 둔다.
+
+## 5. 이번 흐름에서 하지 않는 것
+
+- 유상증자결정 55건 전체 파싱
+- CB·EB·무상증자 등 다른 자금조달 유형
+- 여러 공시 비교·이력 추적
+- 목적별 금액 합산(총액 계산)

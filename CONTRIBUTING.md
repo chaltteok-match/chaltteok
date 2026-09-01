@@ -38,6 +38,10 @@ Issue, Branch, PR, Commit에는 위 목록의 type만 사용한다.
 - 최신 `main`에서 목적별 브랜치를 생성한다.
 - 한 브랜치에는 하나의 목적만 포함한다.
 - 모든 변경은 PR을 통해 병합한다.
+- 병합은 스쿼시 머지로 한다. 저장소 설정이 merge commit과 rebase도 허용하므로 방식을 직접 지정한다.
+  ```bash
+  gh pr merge <PR 번호> --squash
+  ```
 - 상대방의 승인을 받고 리뷰 대화를 해결한 뒤 병합한다.
 - PR 작성자가 리뷰 반영과 최종 상태를 확인하고 직접 병합한다.
 - PR 병합 후 원격 작업 브랜치는 저장소의 `Automatically delete head branches` 설정으로 자동 삭제한다.

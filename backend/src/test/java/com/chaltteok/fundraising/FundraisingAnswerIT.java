@@ -125,6 +125,7 @@ class FundraisingAnswerIT {
                         containsString("기업명=한화에어로스페이스"),
                         containsString("공시유형=major"),
                         containsString("유상증자"),
+                        containsString("공시일=2025-04-08"),
                         containsString("검색"),
                         containsString("major_20250408000012"),
                         containsString("fundraising_purpose_securities_acquisition(ANC_ACQ_AMT)"),

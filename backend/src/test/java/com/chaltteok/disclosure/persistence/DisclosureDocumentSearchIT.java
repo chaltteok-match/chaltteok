@@ -85,6 +85,7 @@ class DisclosureDocumentSearchIT {
         assertThat(summary.hasFailure()).isFalse();
         persistenceService.save(readFixture(TREASURY_STOCK_FIXTURE));
         persistenceService.save(otherCompanyFundraising());
+        persistenceService.save(sameCompanyLaterFundraising());
         persistenceService.save(sameCompanyPeriodicReport());
     }
 
@@ -98,7 +99,7 @@ class DisclosureDocumentSearchIT {
                 );
 
         assertThat(found).extracting(DisclosureDocumentEntity::getDocId)
-                .containsExactly(TARGET_DOC_ID);
+                .containsExactlyInAnyOrder(TARGET_DOC_ID, "major_20250627000349");
         assertThat(found.getFirst().getReportNm()).isEqualTo("주요사항보고서(유상증자결정)");
         assertThat(found.getFirst().getCorpName()).isEqualTo("한화에어로스페이스");
         assertThat(found.getFirst().getDocGroup()).isEqualTo(DocGroup.MAJOR);
@@ -141,7 +142,26 @@ class DisclosureDocumentSearchIT {
                 "유상증자"
         )).extracting(DisclosureDocumentEntity::getDocId)
                 .doesNotContain("major_20250115000001")
+                .containsExactlyInAnyOrder(TARGET_DOC_ID, "major_20250627000349");
+    }
+
+    @Test
+    void findsOnlyDocumentsOnAskedReceiptDate() {
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+                "한화에어로스페이스",
+                DocGroup.MAJOR,
+                "유상증자",
+                LocalDate.of(2025, 4, 8)
+        )).extracting(DisclosureDocumentEntity::getDocId)
                 .containsExactly(TARGET_DOC_ID);
+
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+                "한화에어로스페이스",
+                DocGroup.MAJOR,
+                "유상증자",
+                LocalDate.of(2025, 6, 27)
+        )).extracting(DisclosureDocumentEntity::getDocId)
+                .containsExactly("major_20250627000349");
     }
 
     private Path copyClasspath(String location) throws IOException {
@@ -173,6 +193,23 @@ class DisclosureDocumentSearchIT {
                 null,
                 null,
                 "raw/major/삼성SDI/20250301000001"
+        );
+    }
+
+    private static PreprocessResult sameCompanyLaterFundraising() {
+        return stubResult(
+                "major_20250627000349",
+                "한화에어로스페이스",
+                "012450",
+                "00126566",
+                DocGroup.MAJOR,
+                null,
+                "주요사항보고서(유상증자결정)",
+                "20250627000349",
+                LocalDate.of(2025, 6, 27),
+                null,
+                null,
+                "raw/major/한화에어로스페이스/20250627000349"
         );
     }
 

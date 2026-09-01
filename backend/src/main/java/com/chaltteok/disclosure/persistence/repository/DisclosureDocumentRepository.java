@@ -2,6 +2,7 @@ package com.chaltteok.disclosure.persistence.repository;
 
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -16,5 +17,12 @@ public interface DisclosureDocumentRepository extends JpaRepository<DisclosureDo
             String corpName,
             DocGroup docGroup,
             String keyword
+    );
+
+    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+            String corpName,
+            DocGroup docGroup,
+            String keyword,
+            LocalDate rceptDt
     );
 }

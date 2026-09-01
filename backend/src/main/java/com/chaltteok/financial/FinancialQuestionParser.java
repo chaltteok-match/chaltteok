@@ -3,11 +3,12 @@ package com.chaltteok.financial;
 import com.chaltteok.disclosure.model.enums.Scope;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * 질문 문장에서 기업·연도·항목·연결기준을 읽어낸다.
@@ -21,28 +22,40 @@ final class FinancialQuestionParser {
     private static final Pattern COMPARISON = Pattern.compile(
             "대비|증감|증가|감소|늘어|늘었|줄어|줄었|비교|성장|얼마나");
 
-    /** 긴 표현을 먼저 확인해야 '자산총계'가 '자산'으로 잘리지 않는다. */
-    private static final Map<String, String> ITEM_KEYWORDS = new LinkedHashMap<>();
+    /**
+     * 질문에서 인정하는 항목 표현. 문서 파서의 인정 라벨과 같은 범위로 좁혀 둔다.
+     * {@code 매출}·{@code 순이익} 같은 조각은 넣지 않는다.
+     * {@code 주당순이익}이 {@code 순이익}으로, {@code 매출총이익}이 {@code 매출}로 잡히면
+     * 문서 쪽에서 막은 오탐이 질문 쪽에서 다시 열린다.
+     */
+    private static final Map<String, String> ITEM_KEYWORDS = Map.ofEntries(
+            Map.entry("매출액", "revenue"),
+            Map.entry("영업수익", "revenue"),
+            Map.entry("영업이익", "operating_profit"),
+            Map.entry("당기순이익", "net_income"),
+            Map.entry("자산총계", "total_assets"),
+            Map.entry("총자산", "total_assets"),
+            Map.entry("부채총계", "total_liabilities"),
+            Map.entry("총부채", "total_liabilities"),
+            Map.entry("자본총계", "total_equity"),
+            Map.entry("총자본", "total_equity"));
 
-    static {
-        Map<String, String> raw = Map.ofEntries(
-                Map.entry("매출액", "revenue"),
-                Map.entry("영업수익", "revenue"),
-                Map.entry("매출", "revenue"),
-                Map.entry("영업이익", "operating_profit"),
-                Map.entry("당기순이익", "net_income"),
-                Map.entry("순이익", "net_income"),
-                Map.entry("자산총계", "total_assets"),
-                Map.entry("총자산", "total_assets"),
-                Map.entry("부채총계", "total_liabilities"),
-                Map.entry("총부채", "total_liabilities"),
-                Map.entry("자본총계", "total_equity"),
-                Map.entry("총자본", "total_equity"));
-        raw.entrySet().stream()
-                .sorted(Comparator.comparingInt((Map.Entry<String, String> entry) -> entry.getKey().length())
-                        .reversed())
-                .forEach(entry -> ITEM_KEYWORDS.put(entry.getKey(), entry.getValue()));
-    }
+    /**
+     * 인정 표현을 포함하지만 뜻이 다른 표현. 이 중 하나가 더 길게 걸리면 항목을 만들지 않는다.
+     * 예: {@code 총자산회전율}은 {@code 총자산}을 품고 있지만 금액이 아니라 비율이다.
+     */
+    private static final Set<String> CONFUSABLE_TERMS = Set.of(
+            "매출총이익", "매출원가", "매출채권", "매출액영업이익률", "매출액순이익률",
+            "영업이익률", "영업이익증가율",
+            "주당순이익", "기본주당순이익", "희석주당순이익",
+            "총자산회전율", "총자산이익률", "총자산순이익률", "총자산증가율",
+            "자산총계증가율", "부채총계증가율", "자본총계증가율");
+
+    /** 인정 표현과 혼동 표현을 함께 두고 가장 긴 것을 고른다. */
+    private static final List<String> ALL_TERMS = Stream
+            .concat(ITEM_KEYWORDS.keySet().stream(), CONFUSABLE_TERMS.stream())
+            .sorted(Comparator.comparingInt(String::length).reversed())
+            .toList();
 
     private FinancialQuestionParser() {
     }
@@ -51,10 +64,10 @@ final class FinancialQuestionParser {
         String text = question == null ? "" : question;
 
         String corpName = longestMatch(text, knownCorpNames);
-        String itemLabel = ITEM_KEYWORDS.keySet().stream()
-                .filter(text::contains)
-                .findFirst()
-                .orElse(null);
+        // 가장 긴 표현이 혼동 표현이면 항목을 만들지 않는다.
+        // '주당순이익'에 당기순이익을, '총자산회전율'에 자산총계를 답하지 않기 위해서다.
+        String matched = ALL_TERMS.stream().filter(text::contains).findFirst().orElse(null);
+        String itemLabel = matched != null && ITEM_KEYWORDS.containsKey(matched) ? matched : null;
         String factKey = itemLabel == null ? null : ITEM_KEYWORDS.get(itemLabel);
 
         List<Integer> years = years(text);

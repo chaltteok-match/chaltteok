@@ -82,6 +82,26 @@ class FinancialQuestionParserTest {
     }
 
     @Test
+    void doesNotMatchTermsThatContainAnItemButMeanSomethingElse() {
+        // 주당순이익은 원 단위, 당기순이익은 조 단위다. 조각으로 잡히면 10억 배 틀린 답이 나간다.
+        assertThat(parse("삼성전자의 2024년 주당순이익은 얼마인가?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 기본주당순이익은 얼마인가?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 매출총이익은 얼마인가?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 매출원가는 얼마인가?").factKey()).isNull();
+        // 비율은 금액이 아니다.
+        assertThat(parse("삼성전자의 2024년 영업이익률은 얼마인가?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 총자산회전율은 얼마인가?").factKey()).isNull();
+    }
+
+    @Test
+    void stillMatchesTheItemItselfNextToConfusableWording() {
+        assertThat(parse("삼성전자의 2024년 매출액은 얼마인가?").factKey()).isEqualTo("revenue");
+        assertThat(parse("삼성전자의 2024년 당기순이익은 얼마인가?").factKey()).isEqualTo("net_income");
+        assertThat(parse("삼성전자의 2024년 영업이익은 얼마인가?").factKey()).isEqualTo("operating_profit");
+        assertThat(parse("삼성전자의 2024년 총자산은 얼마인가?").factKey()).isEqualTo("total_assets");
+    }
+
+    @Test
     void doesNotMatchQuestionWithoutFinancialItem() {
         FinancialQuestion parsed = parse(
                 "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?");

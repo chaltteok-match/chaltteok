@@ -44,6 +44,8 @@ chaltteok_etl/
 
 Python 공통 출력 모델은 [`docs/data-model.md`](../docs/data-model.md)의 `PreprocessResult` 계약을 기준으로 구현합니다. 전처리 단계에서는 최종 API 답변이나 `think_trace`를 생성하지 않습니다.
 
+유상증자결정 ACODE·목적별 `fact_key` 근거는 [`docs/architecture/paid-in-capital-acodes.md`](../docs/architecture/paid-in-capital-acodes.md)를 따릅니다. `ANC_ACQ_AMT`는 총 조달금액이 아닙니다.
+
 ## 공통 출력 모델 사용
 
 네 공시 유형 파서는 모두 `chaltteok_etl.common.PreprocessResult`를 최종 출력 모델로 사용합니다. 모델 생성 시 문서 코드와 날짜, NFC 논리 경로, chunk·fact·relation 참조 관계를 검증합니다.

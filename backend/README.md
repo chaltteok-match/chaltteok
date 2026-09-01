@@ -50,7 +50,9 @@ cd backend
 
 ## HyperCLOVA X 클라이언트
 
-HyperCLOVA X 클라이언트는 기본적으로 비활성화되어 있어 API 키가 없는 로컬 환경과 CI에서도 애플리케이션과 테스트를 실행할 수 있습니다.
+`AnswerService`가 Handler 근거로 프롬프트를 만들고 `HcxClient`를 호출합니다. 클라이언트는 기본적으로 비활성화되어 있어 API 키가 없는 로컬 환경과 CI에서도 애플리케이션과 테스트를 실행할 수 있습니다. `HCX_ENABLED=true`이면 CLOVA Studio OpenAI 호환 API를 실제로 호출합니다.
+
+유상증자 근거에는 목적별 금액만 있습니다. 프롬프트에 **타법인 증권취득자금은 총 조달금액이 아니다**는 지시를 넣습니다. `FundraisingAnswerHandler.supports()`는 "유상증자"와 기업명만 보므로 "예정 자금 조달금액" 질문도 이 Handler로 들어올 수 있습니다. 그 경우에도 1.6조원을 총액처럼 답하지 않습니다.
 
 실제 호출에는 CLOVA Studio에서 발급한 테스트 또는 서비스 API 키가 필요합니다. 키는 설정 파일에 저장하지 말고 환경변수로 전달합니다.
 
@@ -92,7 +94,10 @@ export HCX_LIVE_TEST=true
 read -s HCX_API_KEY
 export HCX_API_KEY
 ./gradlew test --tests com.chaltteok.hcx.HcxLiveApiTest
+./gradlew test --tests com.chaltteok.fundraising.FundraisingHcxLiveApiTest
 ```
+
+타임아웃·인증 실패는 `HcxClientException`으로 감싼 뒤 `/answer`에서 HTTP 503(`SERVICE_UNAVAILABLE`)으로 반환합니다. CI의 `FundraisingAnswerIT`는 HCX를 호출하지 않고 이 매핑과 대표 질문의 `retrieved_context`·`think_trace`를 확인합니다.
 
 확인이 끝나면 현재 터미널에서 다음 환경변수를 제거합니다.
 
@@ -101,5 +106,3 @@ unset HCX_API_KEY
 unset HCX_LIVE_TEST
 unset HCX_ENABLED
 ```
-
-현재 범위는 공통 HCX 클라이언트까지이며, `/answer`와의 연결은 `AnswerService` 구현에서 진행합니다.

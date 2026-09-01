@@ -151,11 +151,25 @@ class AnswerServiceTest {
 
     @Test
     void mapsHcxFailureToServiceUnavailable() {
+        assertMapsHcxErrorToServiceUnavailable(HcxErrorType.UPSTREAM, "upstream down");
+    }
+
+    @Test
+    void mapsHcxTimeoutToServiceUnavailable() {
+        assertMapsHcxErrorToServiceUnavailable(HcxErrorType.TIMEOUT, "read timed out");
+    }
+
+    @Test
+    void mapsHcxAuthenticationFailureToServiceUnavailable() {
+        assertMapsHcxErrorToServiceUnavailable(HcxErrorType.AUTHENTICATION, "unauthorized");
+    }
+
+    private void assertMapsHcxErrorToServiceUnavailable(HcxErrorType errorType, String message) {
         when(handlerSelector.hasRegisteredHandlers()).thenReturn(true);
         when(handlerSelector.select(any())).thenReturn(Optional.of(answerHandler));
         when(answerHandler.handle(any(), any())).thenReturn(handlerResultWithEvidence());
         when(hcxClient.generate(any(HcxPrompt.class)))
-                .thenThrow(new HcxClientException(HcxErrorType.UPSTREAM, "upstream down"));
+                .thenThrow(new HcxClientException(errorType, message));
 
         assertThatThrownBy(() -> answerService.answer("Q-503", "매출액은?"))
                 .isInstanceOf(ServiceUnavailableException.class)

@@ -18,6 +18,11 @@ class HcxResponseErrorHandlerTest {
     }
 
     @Test
+    void mapsForbiddenToAuthenticationError() {
+        assertErrorType(HttpStatus.FORBIDDEN, HcxErrorType.AUTHENTICATION);
+    }
+
+    @Test
     void mapsTooManyRequestsToRateLimitError() {
         assertErrorType(HttpStatus.TOO_MANY_REQUESTS, HcxErrorType.RATE_LIMIT);
     }

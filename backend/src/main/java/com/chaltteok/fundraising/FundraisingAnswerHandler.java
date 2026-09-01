@@ -30,7 +30,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>같은 기업의 유상증자결정이 여러 건이면 금액이 다를 수 있다. 질문의 공시일
  * ({@code yyyy년 M월 d일})로 {@code rcept_dt}를 좁힌다. 최신 1건을 고르지 않는다.
- * 같은 날짜에 금액이 서로 다르면 이어붙이지 않고 답변 불가로 둔다.
+ * 같은 날짜에 정정본이 있으면 원본은 대체된 것으로 보고 정정본만 남긴다.
+ * 남은 문서끼리 금액이 서로 다르면 이어붙이지 않고 답변 불가로 둔다.
  *
  * <p>{@code ANC_ACQ_AMT}/{@link #SECURITIES_ACQUISITION_FACT_KEY}는 총 조달금액이 아니라
  * 타법인 증권취득 목적 금액이다. {@code supports()}는 "유상증자"와 기업명만 보므로
@@ -118,18 +119,19 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             );
         }
 
+        List<Candidate> preferred = preferCorrections(candidates);
         Set<String> distinctAmounts = new LinkedHashSet<>();
-        for (Candidate candidate : candidates) {
+        for (Candidate candidate : preferred) {
             distinctAmounts.add(amountKey(candidate.fact()));
         }
         if (distinctAmounts.size() > 1) {
             return AnswerHandlerResult.unavailable(
-                    searchSummary + " → 문서 " + candidates.size() + "건",
+                    searchSummary + " → 문서 " + preferred.size() + "건",
                     "같은 공시일에 타법인 증권취득자금이 서로 다른 문서가 있어 한 건으로 특정하지 못했습니다"
             );
         }
 
-        Candidate selected = candidates.stream()
+        Candidate selected = preferred.stream()
                 .min(documentPreference())
                 .orElseThrow();
         String processSummary = searchSummary
@@ -139,13 +141,21 @@ public class FundraisingAnswerHandler implements AnswerHandler {
         return AnswerHandlerResult.of(List.of(toEvidence(selected.document(), selected.fact())), processSummary);
     }
 
+    /**
+     * 기재정정은 같은 날 원본을 대체한다. 정정본이 하나라도 있으면 원본은 후보에서 뺀다.
+     */
+    private static List<Candidate> preferCorrections(List<Candidate> candidates) {
+        List<Candidate> corrections = candidates.stream()
+                .filter(candidate -> candidate.document().isCorrection())
+                .toList();
+        return corrections.isEmpty() ? candidates : corrections;
+    }
+
     private static Comparator<Candidate> documentPreference() {
-        return Comparator
-                .comparing((Candidate candidate) -> candidate.document().isCorrection())
-                .thenComparing(
-                        candidate -> candidate.document().getRceptNo(),
-                        Comparator.nullsLast(String::compareTo)
-                );
+        return Comparator.comparing(
+                candidate -> candidate.document().getRceptNo(),
+                Comparator.nullsLast(String::compareTo)
+        );
     }
 
     private static LocalDate resolveReportDate(String question) {

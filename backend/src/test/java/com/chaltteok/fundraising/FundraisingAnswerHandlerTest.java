@@ -34,6 +34,9 @@ class FundraisingAnswerHandlerTest {
     private static final String QUESTION_WITHOUT_DATE =
             "한화에어로스페이스의 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?";
     private static final LocalDate REPORT_DATE = LocalDate.of(2025, 4, 8);
+    private static final String QUESTION_APRIL_18 =
+            "한화에어로스페이스가 2025년 4월 18일 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?";
+    private static final LocalDate APRIL_18 = LocalDate.of(2025, 4, 18);
 
     @Mock
     private DisclosureDocumentRepository documentRepository;
@@ -266,6 +269,82 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("서로 다른");
         assertThat(result.evidences()).isEmpty();
+    }
+
+    @Test
+    void prefersCorrectionsOverOriginalWhenSameDayAmountsDiffer() {
+        DisclosureDocumentEntity original = hanwhaFundraisingDocument(
+                "major_20250418000538",
+                "20250418000538",
+                APRIL_18,
+                false
+        );
+        DisclosureDocumentEntity firstCorrection = hanwhaFundraisingDocument(
+                "major_20250418000593",
+                "20250418000593",
+                APRIL_18,
+                true
+        );
+        DisclosureDocumentEntity secondCorrection = hanwhaFundraisingDocument(
+                "major_20250418000639",
+                "20250418000639",
+                APRIL_18,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+                "한화에어로스페이스",
+                DocGroup.MAJOR,
+                "유상증자",
+                APRIL_18
+        )).thenReturn(List.of(original, firstCorrection, secondCorrection));
+        when(factRepository.findByDocumentDocId("major_20250418000538"))
+                .thenReturn(List.of(amountFact(original, "800,000,000,000", "800000000000")));
+        when(factRepository.findByDocumentDocId("major_20250418000593"))
+                .thenReturn(List.of(amountFact(firstCorrection, "1,600,000,000,000", "1600000000000")));
+        when(factRepository.findByDocumentDocId("major_20250418000639"))
+                .thenReturn(List.of(amountFact(secondCorrection, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle("Q-FUND", QUESTION_APRIL_18);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences().getFirst().evidenceText()).contains("1,600,000,000,000");
+        assertThat(result.processSummary())
+                .contains("major_20250418000593")
+                .doesNotContain("major_20250418000538")
+                .doesNotContain("800,000,000,000");
+    }
+
+    @Test
+    void prefersCorrectionAsEvidenceWhenSameDayAmountsMatch() {
+        DisclosureDocumentEntity original = hanwhaFundraisingDocument(
+                "major_20250408000010",
+                "20250408000010",
+                REPORT_DATE,
+                false
+        );
+        DisclosureDocumentEntity correction = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+                any(),
+                any(),
+                any(),
+                any()
+        )).thenReturn(List.of(original, correction));
+        when(factRepository.findByDocumentDocId("major_20250408000010"))
+                .thenReturn(List.of(amountFact(original, "1,600,000,000,000", "1600000000000")));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(amountFact(correction, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle("Q-FUND", QUESTION);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("major_20250408000012")
+                .doesNotContain("major_20250408000010");
     }
 
     private static DisclosureDocumentEntity hanwhaFundraisingDocument(

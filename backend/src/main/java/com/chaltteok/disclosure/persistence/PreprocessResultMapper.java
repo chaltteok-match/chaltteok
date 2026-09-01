@@ -140,6 +140,7 @@ public class PreprocessResultMapper {
         entity.setAsOfDate(fact.asOfDate());
         entity.setPeriodBasis(fact.periodBasis());
         entity.setScope(fact.scope());
+        entity.setExtractionStatus(fact.extractionStatus());
         return entity;
     }
 

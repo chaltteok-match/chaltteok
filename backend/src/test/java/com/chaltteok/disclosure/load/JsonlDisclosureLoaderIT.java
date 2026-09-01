@@ -3,6 +3,7 @@ package com.chaltteok.disclosure.load;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -164,6 +165,15 @@ class JsonlDisclosureLoaderIT {
     }
 
     @Test
+    void reportsExtractionStatusCountsInSummary() throws IOException {
+        // 전량 적재 후 값이 빈 원인을 원인별로 세려면 요약에 상태가 남아야 한다.
+        LoadSummary summary = loader.load(write(sampleLines));
+
+        assertThat(summary.extractionStatusCounts().get(ExtractionStatus.OK)).isEqualTo(72);
+        assertThat(summary.describe()).contains("추출 상태: ok 72");
+    }
+
+    @Test
     void countsRepeatedDocIdOnceInSummary() throws IOException {
         // 같은 doc_id가 두 줄이면 저장은 upsert로 1건이다. 요약도 1건으로 보고해야 한다.
         LoadSummary summary = loader.load(write(List.of(sampleLines.get(0), sampleLines.get(0))));
@@ -178,7 +188,7 @@ class JsonlDisclosureLoaderIT {
 
     @Test
     void reportsLineNumberAndDocIdWhenOneLineFails() throws IOException {
-        String broken = sampleLines.get(0).replace("\"schema_version\":\"0.1\"", "\"schema_version\":\"\"");
+        String broken = sampleLines.get(0).replace("\"schema_version\":\"0.2\"", "\"schema_version\":\"\"");
         LoadSummary summary = loader.load(write(List.of(broken, sampleLines.get(1))));
 
         assertThat(summary.totalRecords()).isEqualTo(2);

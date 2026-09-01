@@ -1,5 +1,6 @@
 package com.chaltteok.disclosure.model;
 
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.model.enums.PeriodBasis;
 import com.chaltteok.disclosure.model.enums.Scope;
 import com.chaltteok.disclosure.model.enums.ValueType;
@@ -18,6 +19,7 @@ import java.time.LocalDate;
  *   <li>{@code value_type=date}이면 {@code normalized_value}는 {@code YYYY-MM-DD}</li>
  *   <li>기간 값은 {@code period_start}/{@code period_end}, 시점 값은 {@code as_of_date}</li>
  *   <li>연결·별도 확인 불가면 {@code scope=unknown}</li>
+ *   <li>{@code normalized_value}가 비면 {@code extraction_status}에 그 이유가 남는다</li>
  * </ul>
  */
 public record ExtractedFact(
@@ -73,6 +75,10 @@ public record ExtractedFact(
 
         @JsonProperty(required = true)
         @NotNull
-        Scope scope
+        Scope scope,
+
+        @JsonProperty(required = true)
+        @NotNull
+        ExtractionStatus extractionStatus
 ) {
 }

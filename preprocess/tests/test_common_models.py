@@ -12,6 +12,7 @@ from chaltteok_etl.common import (
     DocGroup,
     EvidenceChunk,
     ExtractedFact,
+    ExtractionStatus,
     ManifestFileFormat,
     PeriodBasis,
     PreprocessResult,
@@ -91,6 +92,7 @@ def make_fact(**overrides: object) -> ExtractedFact:
         "as_of_date": None,
         "period_basis": PeriodBasis.CUMULATIVE,
         "scope": Scope.CONSOLIDATED,
+        "extraction_status": ExtractionStatus.OK,
     }
     values.update(overrides)
     return ExtractedFact(**values)
@@ -98,7 +100,7 @@ def make_fact(**overrides: object) -> ExtractedFact:
 
 def make_result(**overrides: object) -> PreprocessResult:
     values: dict[str, object] = {
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "parser_version": "0.1.0",
         "document": make_document(),
         "evidence_chunks": [make_chunk()],

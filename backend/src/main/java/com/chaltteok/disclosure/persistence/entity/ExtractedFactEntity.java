@@ -1,5 +1,6 @@
 package com.chaltteok.disclosure.persistence.entity;
 
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.model.enums.PeriodBasis;
 import com.chaltteok.disclosure.model.enums.Scope;
 import com.chaltteok.disclosure.model.enums.ValueType;
@@ -79,6 +80,10 @@ public class ExtractedFactEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "scope", nullable = false, length = 32)
     private Scope scope;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "extraction_status", nullable = false, length = 32)
+    private ExtractionStatus extractionStatus;
 
     public ExtractedFactEntity() {
     }
@@ -201,5 +206,13 @@ public class ExtractedFactEntity {
 
     public void setScope(Scope scope) {
         this.scope = scope;
+    }
+
+    public ExtractionStatus getExtractionStatus() {
+        return extractionStatus;
+    }
+
+    public void setExtractionStatus(ExtractionStatus extractionStatus) {
+        this.extractionStatus = extractionStatus;
     }
 }

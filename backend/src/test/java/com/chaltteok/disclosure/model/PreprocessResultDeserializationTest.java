@@ -48,7 +48,7 @@ class PreprocessResultDeserializationTest {
     void deserializesSection7Example() throws Exception {
         PreprocessResult result = objectMapper.readValue(validSection7Json(), PreprocessResult.class);
 
-        assertThat(result.schemaVersion()).isEqualTo("0.1");
+        assertThat(result.schemaVersion()).isEqualTo("0.2");
         assertThat(result.parserVersion()).isEqualTo("0.1.0");
 
         DisclosureDocument document = result.document();
@@ -258,7 +258,7 @@ class PreprocessResultDeserializationTest {
     private static String validSection7Json() {
         return """
                 {
-                  "schema_version": "0.1",
+                  "schema_version": "0.2",
                   "parser_version": "0.1.0",
                   "document": {
                     "doc_id": "periodic_20250311000001",
@@ -313,7 +313,8 @@ class PreprocessResultDeserializationTest {
                       "period_end": "2024-12-31",
                       "as_of_date": null,
                       "period_basis": "cumulative",
-                      "scope": "consolidated"
+                      "scope": "consolidated",
+                      "extraction_status": "ok"
                     }
                   ],
                   "relations": []

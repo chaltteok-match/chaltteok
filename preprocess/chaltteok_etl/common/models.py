@@ -94,6 +94,21 @@ class Scope(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ExtractionStatus(StrEnum):
+    """Outcome of normalizing one extracted value.
+
+    ``normalized_value`` can be empty for more than one reason. Without a status
+    a parser defect is indistinguishable from a genuine gap in the disclosure,
+    and the answer would disguise the defect as an information limit
+    (docs/data-model.md section 9).
+
+    Adding a state makes existing output unreadable, so bump ``schema_version``.
+    """
+
+    OK = "ok"
+    UNIT_MISSING = "unit_missing"
+
+
 class RelationType(StrEnum):
     """Type of correction or follow-up relationship."""
 
@@ -258,6 +273,7 @@ class ExtractedFact(ContractModel):
     as_of_date: date | None
     period_basis: PeriodBasis
     scope: Scope
+    extraction_status: ExtractionStatus
 
     @field_validator(
         "fact_id", "doc_id", "chunk_id", "fact_key", "label", "raw_value"
@@ -374,7 +390,7 @@ class DisclosureRelation(ContractModel):
 class PreprocessResult(ContractModel):
     """Validated output for one manifest disclosure document."""
 
-    schema_version: Literal["0.1"]
+    schema_version: Literal["0.2"]
     parser_version: Annotated[
         StrictStr, Field(pattern=r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$")
     ]

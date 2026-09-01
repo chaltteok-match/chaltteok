@@ -12,6 +12,7 @@ import com.chaltteok.disclosure.model.PreprocessResult;
 import com.chaltteok.disclosure.model.enums.ContentType;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.model.enums.ManifestFileFormat;
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.model.enums.PeriodBasis;
 import com.chaltteok.disclosure.model.enums.RelationType;
 import com.chaltteok.disclosure.model.enums.Scope;
@@ -91,7 +92,7 @@ class DisclosurePersistenceServiceIT {
         assertThat(reloaded.getCorpName()).isEqualTo("예시전자");
         assertThat(reloaded.getDocGroup()).isEqualTo(DocGroup.EXCHANGE);
         assertThat(reloaded.getRceptDt()).isEqualTo(LocalDate.of(2024, 2, 1));
-        assertThat(reloaded.getSchemaVersion()).isEqualTo("0.1");
+        assertThat(reloaded.getSchemaVersion()).isEqualTo("0.2");
         assertThat(reloaded.getParserVersion()).isEqualTo("0.1.0");
 
         List<EvidenceChunkEntity> chunks =
@@ -185,10 +186,11 @@ class DisclosurePersistenceServiceIT {
                 null,
                 LocalDate.of(2024, 2, 1),
                 PeriodBasis.POINT_IN_TIME,
-                Scope.NOT_APPLICABLE
+                Scope.NOT_APPLICABLE,
+                ExtractionStatus.OK
         );
         PreprocessResult updatedRelated = new PreprocessResult(
-                "0.1",
+                "0.2",
                 "0.1.1",
                 updatedDocument,
                 List.of(updatedChunk),
@@ -237,7 +239,7 @@ class DisclosurePersistenceServiceIT {
     @Test
     void rejectsRelationOwnedByDifferentDocument() {
         PreprocessResult invalid = new PreprocessResult(
-                "0.1",
+                "0.2",
                 "0.1.0",
                 originalDocument(),
                 List.of(originalChunk()),
@@ -252,7 +254,7 @@ class DisclosurePersistenceServiceIT {
 
     private static PreprocessResult originalDocumentResult() {
         return new PreprocessResult(
-                "0.1",
+                "0.2",
                 "0.1.0",
                 originalDocument(),
                 List.of(originalChunk()),
@@ -263,7 +265,7 @@ class DisclosurePersistenceServiceIT {
 
     private static PreprocessResult relatedDocumentResult() {
         return new PreprocessResult(
-                "0.1",
+                "0.2",
                 "0.1.0",
                 relatedDocument(),
                 List.of(relatedChunk()),
@@ -370,7 +372,8 @@ class DisclosurePersistenceServiceIT {
                 null,
                 LocalDate.of(2024, 1, 1),
                 PeriodBasis.POINT_IN_TIME,
-                Scope.NOT_APPLICABLE
+                Scope.NOT_APPLICABLE,
+                ExtractionStatus.OK
         );
     }
 
@@ -390,7 +393,8 @@ class DisclosurePersistenceServiceIT {
                 null,
                 LocalDate.of(2024, 2, 1),
                 PeriodBasis.POINT_IN_TIME,
-                Scope.NOT_APPLICABLE
+                Scope.NOT_APPLICABLE,
+                ExtractionStatus.OK
         );
     }
 

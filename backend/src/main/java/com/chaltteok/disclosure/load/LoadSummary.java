@@ -1,6 +1,8 @@
 package com.chaltteok.disclosure.load;
 
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 적재 1회의 결과 요약. docs/data-model.md §9가 요구하는 실행 요약이다.
@@ -11,6 +13,7 @@ import java.util.List;
  * @param evidenceChunks 적재된 문서들의 근거 수
  * @param extractedFacts 적재된 문서들의 사실 수
  * @param relations 적재된 문서들이 선언한 관계 수
+ * @param extractionStatusCounts 적재된 사실의 추출 상태별 건수. 전량 적재 후 원인별로 세기 위한 값
  * @param failures 실패한 줄 목록
  */
 public record LoadSummary(
@@ -20,10 +23,14 @@ public record LoadSummary(
         int evidenceChunks,
         int extractedFacts,
         int relations,
+        Map<ExtractionStatus, Integer> extractionStatusCounts,
         List<LoadFailure> failures
 ) {
 
     public LoadSummary {
+        extractionStatusCounts = extractionStatusCounts == null
+                ? Map.of()
+                : Map.copyOf(extractionStatusCounts);
         failures = failures == null ? List.of() : List.copyOf(failures);
     }
 
@@ -44,6 +51,16 @@ public record LoadSummary(
                         .formatted(totalRecords, succeeded, failed()))
                 .append(" / 문서 %d, 근거 %d, 사실 %d, 관계 %d"
                         .formatted(documents, evidenceChunks, extractedFacts, relations));
+        if (!extractionStatusCounts.isEmpty()) {
+            // 값이 비는 원인을 원인별로 세어 둬야 전량 적재 후 QA에서 구분할 수 있다.
+            text.append(" / 추출 상태:");
+            for (ExtractionStatus status : ExtractionStatus.values()) {
+                int count = extractionStatusCounts.getOrDefault(status, 0);
+                if (count > 0) {
+                    text.append(" %s %d".formatted(status.toJson(), count));
+                }
+            }
+        }
         for (LoadFailure failure : failures) {
             text.append(System.lineSeparator()).append("  실패 ").append(failure.describe());
         }

@@ -69,6 +69,7 @@ class FinancialAnswerHandlerIT {
         persistenceService.save(samsungQuarter2024());
         persistenceService.save(samsungElectroMechanics2024());
         persistenceService.save(unitUnknownDocument());
+        persistenceService.save(quarterOnlyCompany2023());
     }
 
     private AnswerHandlerResult answer(String question) {
@@ -211,6 +212,25 @@ class FinancialAnswerHandlerIT {
     }
 
     @Test
+    void returnsUnavailableWhenOnlyPartialPeriodExistsForTheYear() {
+        // 분기보고서의 3분기 누적을 연간 수치처럼 답하면 안 된다.
+        AnswerHandlerResult result = answer("한미반도체의 2023년 연결기준 매출액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("연간 수치가 아니라 일부 기간 누적");
+        assertThat(result.processSummary()).contains("연간 수치 없음(일부 기간 누적만 존재)");
+    }
+
+    @Test
+    void usesAnnualReportEvenWhenAQuarterlyReportSharesTheYear() {
+        // 같은 연도에 둘 다 있으면 사업보고서의 연간 수치를 쓴다.
+        AnswerHandlerResult result = answer("삼성전자의 2024년 연결기준 매출액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary()).contains("300조 8,709억원").doesNotContain("220,000,000");
+    }
+
+    @Test
     void supportsOnlyFinancialQuestions() {
         assertThat(handler.supports("삼성전자의 2024년 연결기준 매출액은 얼마인가?")).isTrue();
         assertThat(handler.supports(
@@ -256,7 +276,7 @@ class FinancialAnswerHandlerIT {
                 "revenue", Scope.CONSOLIDATED,
                 new String[]{"220,000,000", "258,935,494", "302,231,360"},
                 new String[]{"220000000000000", "258935494000000", "302231360000000"},
-                new int[]{2024, 2023, 2022});
+                new int[]{2024, 2023, 2022}, 9);
         return fixture.build();
     }
 
@@ -268,6 +288,23 @@ class FinancialAnswerHandlerIT {
         fixture.row("가. 요약연결재무정보", "매출액", "제51기: 10,933,516",
                 "revenue", Scope.CONSOLIDATED,
                 new String[]{"10,933,516"}, new String[]{"10933516000000"}, new int[]{2024});
+        return fixture.build();
+    }
+
+    /**
+     * 그 연도에 분기보고서만 있는 기업. 당해 수치는 3분기 누적이라 연간 값이 아니다.
+     * 실제 파서도 이 경우 period_end를 9월 30일로 남긴다.
+     */
+    private static PreprocessResult quarterOnlyCompany2023() {
+        Fixture fixture = new Fixture("periodic_20231114000777");
+        fixture.document = document("periodic_20231114000777", "한미반도체", "00164788", "042700",
+                "분기보고서 (2023.09)", "20231114000777", LocalDate.of(2023, 11, 14), "quarter", 2023, 9);
+        fixture.row("가. 요약연결재무정보", "매출액",
+                "제44기 3분기: 121,000 / 제43기: 328,181 / 제42기: 366,246",
+                "revenue", Scope.CONSOLIDATED,
+                new String[]{"121,000", "328,181", "366,246"},
+                new String[]{"121000000000", "328181000000", "366246000000"},
+                new int[]{2023, 2022, 2021}, 9);
         return fixture.build();
     }
 
@@ -307,6 +344,16 @@ class FinancialAnswerHandlerIT {
 
         private void row(String tableTitle, String label, String text, String factKey, Scope scope,
                 String[] rawValues, String[] normalizedValues, int[] years) {
+            row(tableTitle, label, text, factKey, scope, rawValues, normalizedValues, years, 12);
+        }
+
+        /**
+         * 실제 파서와 같은 기간을 만든다.
+         * 분기·반기보고서는 당해 컬럼만 기준월까지 누적이고 직전 연도들은 연간이다.
+         * 예: 2023년 1분기 보고서 → 2023-01-01~03-31, 2022-01-01~12-31, 2021-01-01~12-31
+         */
+        private void row(String tableTitle, String label, String text, String factKey, Scope scope,
+                String[] rawValues, String[] normalizedValues, int[] years, int currentEndMonth) {
             int sequence = chunks.size();
             String chunkId = "%s:chunk:%04d".formatted(docId, sequence);
             chunks.add(new EvidenceChunk(chunkId, docId, sequence, ContentType.TABLE,
@@ -315,9 +362,12 @@ class FinancialAnswerHandlerIT {
                     null, "1. 요약재무정보", tableTitle, label, null));
 
             boolean balance = factKey.startsWith("total_");
+            int currentYear = years[0];
             for (int index = 0; index < years.length; index++) {
                 int year = years[index];
-                LocalDate end = LocalDate.of(year, 12, 31);
+                int endMonth = year == currentYear ? currentEndMonth : 12;
+                LocalDate end = LocalDate.of(year, endMonth, 1)
+                        .withDayOfMonth(LocalDate.of(year, endMonth, 1).lengthOfMonth());
                 facts.add(new ExtractedFact(
                         "%s:fact:%04d".formatted(docId, facts.size()), docId, chunkId, factKey, label,
                         ValueType.NUMBER, rawValues[index],

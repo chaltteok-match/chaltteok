@@ -79,11 +79,19 @@ public class FinancialAnswerHandler implements AnswerHandler {
 
         Optional<ExtractedFactEntity> target = factOfYear(facts, parsed.targetYear());
         if (target.isEmpty()) {
-            return AnswerHandlerResult.unavailable(
-                    searchSummary + " → 해당 항목·기준의 수치 없음",
-                    "'%s'에서 %d년 %s기준 %s를 찾지 못했습니다".formatted(
+            boolean onlyPartialPeriod = facts.stream().anyMatch(
+                    fact -> parsed.targetYear().equals(yearOf(fact)));
+            String reason = onlyPartialPeriod
+                    ? "'%s'에는 %d년 %s가 연간 수치가 아니라 일부 기간 누적으로만 있어 연간 값으로 답할 수 없습니다"
+                            .formatted(document.getReportNm(), parsed.targetYear(), parsed.itemLabel())
+                    : "'%s'에서 %d년 %s기준 %s를 찾지 못했습니다".formatted(
                             document.getReportNm(), parsed.targetYear(),
-                            scopeText(parsed.scope()), parsed.itemLabel()));
+                            scopeText(parsed.scope()), parsed.itemLabel());
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + (onlyPartialPeriod
+                            ? " → 연간 수치 없음(일부 기간 누적만 존재)"
+                            : " → 해당 항목·기준의 수치 없음"),
+                    reason);
         }
         ExtractedFactEntity targetFact = target.get();
 
@@ -178,12 +186,23 @@ public class FinancialAnswerHandler implements AnswerHandler {
         if (year == null) {
             return Optional.empty();
         }
-        return facts.stream().filter(fact -> year.equals(yearOf(fact))).findFirst();
+        return facts.stream().filter(fact -> coversFullYear(fact, year)).findFirst();
     }
 
-    private static Integer yearOf(ExtractedFactEntity fact) {
-        LocalDate date = fact.getPeriodEnd() != null ? fact.getPeriodEnd() : fact.getAsOfDate();
-        return date == null ? null : date.getYear();
+    /**
+     * 연도를 묻는 질문에 쓸 수 있는 수치인지 본다.
+     *
+     * <p>분기·반기보고서의 요약재무정보에는 그 해 누적치와 직전 연도들의 연간치가 함께 있다.
+     * 예를 들어 2023년 1분기 보고서에는 2023년 1~3월 매출과 2022년·2021년 연간 매출이 같이 실린다.
+     * 연도만 비교하면 3개월치를 그 해 연간 수치로 답하게 되므로, 기간이 한 해를 다 덮는지 확인한다.
+     * 재무상태 항목은 시점 값이라 기준일이 연말인지 본다.
+     */
+    private static boolean coversFullYear(ExtractedFactEntity fact, int year) {
+        if (fact.getPeriodEnd() != null) {
+            return LocalDate.of(year, 1, 1).equals(fact.getPeriodStart())
+                    && LocalDate.of(year, 12, 31).equals(fact.getPeriodEnd());
+        }
+        return LocalDate.of(year, 12, 31).equals(fact.getAsOfDate());
     }
 
     private static Optional<ExtractedFactEntity> usableFactOfYear(
@@ -260,6 +279,12 @@ public class FinancialAnswerHandler implements AnswerHandler {
         if (!evidences.contains(evidence)) {
             evidences.add(evidence);
         }
+    }
+
+    /** 사유를 구분하기 위한 값. 답변에 쓸 수치를 고르는 데는 쓰지 않는다. */
+    private static Integer yearOf(ExtractedFactEntity fact) {
+        LocalDate date = fact.getPeriodEnd() != null ? fact.getPeriodEnd() : fact.getAsOfDate();
+        return date == null ? null : date.getYear();
     }
 
     private RetrievedEvidence evidenceOf(DisclosureDocumentEntity document, ExtractedFactEntity fact) {

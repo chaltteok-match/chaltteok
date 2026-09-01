@@ -154,7 +154,7 @@ manifest의 `file_format`은 수집 당시의 분류이며 실제 파서 종류�
 | `industry` | string | `str` | 필수 | 불가 | 업종 대분류 |
 | `sector` | string | `str` | 필수 | 불가 | 섹터 분류 |
 | `doc_group` | string | `DocGroup` | 필수 | 불가 | `periodic`, `major`, `exchange`, `holding` 중 하나 |
-| `doc_subtype` | string | `str \| None` | 필수 | 허용 | 세부 유형. 주요사항보고서처럼 manifest 값이 없으면 `null` |
+| `doc_subtype` | string | `str \| None` | 필수 | 허용 | 문서 세부 유형. manifest 값이 없는 주요사항보고서는 공시명에서 서식명을 뽑아 채운다 |
 | `report_nm` | string | `str` | 필수 | 불가 | 공시명 |
 | `rcept_no` | string | `str` | 필수 | 불가 | DART 접수번호 14자리 |
 | `rcept_dt` | string | `date` | 필수 | 불가 | 접수일, `YYYY-MM-DD` |
@@ -176,6 +176,29 @@ manifest의 `file_format`은 수집 당시의 분류이며 실제 파서 종류�
 - `manifest_file_format`은 manifest 값을 보존하며 실제 파일 내용과 다를 수 있다.
 - `doc_group=periodic`이면 `base_year`와 `base_month`가 필수다.
 - 그 외 공시 유형은 `base_year`와 `base_month`를 `null`로 출력한다.
+
+`doc_subtype`은 `doc_group` 안에서 문서를 다시 나누는 값이다. 값의 의미는 공시 유형마다 다르다.
+
+| `doc_group` | 값의 성격 | 예 |
+| --- | --- | --- |
+| `periodic` | 보고 주기 | `annual`, `half`, `quarter` |
+| `exchange` | 서식 종류 | `단일판매공급계약체결`, `신규시설투자등` |
+| `holding` | 서식 종류 | `대량보유상황보고서` |
+| `major` | 서식 종류 | `유상증자결정`, `자기주식취득결정` |
+
+주요사항보고서만 manifest에 값이 없어 `report_nm`에서 뽑는다.
+
+```text
+"[기재정정]주요사항보고서(유상증자결정)"  ->  "유상증자결정"
+"주요사항보고서(자기주식취득결정)"        ->  "자기주식취득결정"
+```
+
+`report_nm`을 그대로 검색 키로 쓰지 않는 이유는 두 가지다.
+
+- 절반가량에 `[기재정정]` 접두가 붙는다. 주요사항보고서 598건 중 유상증자결정 56건은 접두 유무로 표기가 갈린다.
+- 이름이 서로를 포함한다. `자기주식`으로 검색하면 취득(91)·처분(157)·신탁계약체결(47)·신탁계약해지(43)가 모두 걸린다.
+
+`주요사항보고서(...)` 형태가 아닌 공시명은 정정 접두만 벗겨서 쓴다.
 
 ## 4. 검색 근거 모델
 

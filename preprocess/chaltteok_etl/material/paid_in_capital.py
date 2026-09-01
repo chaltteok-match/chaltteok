@@ -29,7 +29,7 @@ from chaltteok_etl.common import (
 )
 
 SCHEMA_VERSION = "0.1"
-PARSER_VERSION = "0.1.1"
+PARSER_VERSION = "0.1.2"
 
 # DART DOCUMENT-NAME ACODE. 유상증자결정 서식 식별 코드.
 PAID_IN_CAPITAL_DOCUMENT_ACODE = "11306"
@@ -70,6 +70,10 @@ _TEXT_ACODES = frozenset({"AOI_BAS", "ETC_CNT", "RPT_SBM", "STO_CNT"})
 
 _MISSING_RAW_VALUES = frozenset({"-"})
 _WHITESPACE = re.compile(r"\s+")
+# DART 원문에 실체참조가 아닌 & 와 태그가 아닌 < 가 섞여 ET.parse가 실패한다.
+# 치환은 파서 입력에만 하고 원문 파일은 바꾸지 않는다. docs/data-model.md §9.
+_BARE_AMP = re.compile(r"&(?!#\d+;|#x[0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
+_BARE_LT = re.compile(r"<(?=[^A-Za-z/!?])")
 _UNIT_PATTERNS: tuple[tuple[re.Pattern[str], str, str | None], ...] = (
     (re.compile(r"\(원\)"), "원", "KRW"),
     (re.compile(r"\(주\)"), "주", "share"),
@@ -142,9 +146,16 @@ def parse_paid_in_capital_increase(
 def _parse_dart_xml(source_xml: Path) -> ET.Element:
     try:
         # Corpus text is UTF-8. External DTDs are not loaded by default.
-        return ET.parse(source_xml).getroot()
+        xml_text = source_xml.read_text(encoding="utf-8")
+        return ET.fromstring(_sanitize_dart_xml(xml_text))
     except ET.ParseError as error:
         raise ValueError(f"failed to parse DART XML: {source_xml}") from error
+
+
+def _sanitize_dart_xml(xml_text: str) -> str:
+    """Escape bare & and < so well-known DART XML quirks parse without losing text."""
+
+    return _BARE_LT.sub("&lt;", _BARE_AMP.sub("&amp;", xml_text))
 
 
 def _assert_paid_in_capital_form(root: ET.Element) -> None:
@@ -321,12 +332,14 @@ def _fallback_chunk(
     root: ET.Element, doc_id: str, source_file: str
 ) -> EvidenceChunk:
     document_name = _first_text(root, "DOCUMENT-NAME") or "주요사항보고서(유상증자결정)"
+    body_text = _collect_body_text(root)
+    text = body_text or document_name
     return EvidenceChunk(
         chunk_id=f"{doc_id}:chunk:0000",
         doc_id=doc_id,
         sequence=0,
         content_type=ContentType.PARAGRAPH,
-        text=document_name,
+        text=text,
         source_file=source_file,
         source_format=SourceFormat.DART_XML,
         page_number=None,
@@ -335,6 +348,28 @@ def _fallback_chunk(
         row_label=None,
         column_label=None,
     )
+
+
+def _collect_body_text(root: ET.Element) -> str:
+    """Keep visible body copy when every mapped TE value is missing ('-')."""
+
+    body = root.find("BODY")
+    start = body if body is not None else root
+    parts: list[str] = []
+    seen: set[str] = set()
+    for element in start.iter():
+        if element.tag not in {"P", "TD", "TH", "TE", "TITLE"}:
+            continue
+        if element.tag in {"TITLE", "P"} and len(list(element)):
+            continue
+        text = _readable_text(element)
+        if not text or _is_missing_value(text):
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        parts.append(text)
+    return "\n".join(parts)
 
 
 def _units_for(

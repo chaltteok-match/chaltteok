@@ -99,7 +99,7 @@ def test_parser_emits_validated_preprocess_result_json(
     restored = PreprocessResult.model_validate_json(parsed_result.model_dump_json())
 
     assert payload["schema_version"] == "0.1"
-    assert payload["parser_version"] == "0.1.1"
+    assert payload["parser_version"] == "0.1.2"
     assert payload["document"]["doc_id"] == "major_20250408000012"
     assert payload["document"]["doc_group"] == "major"
     assert payload["document"]["source_path"] == CANONICAL_SOURCE_PATH
@@ -191,3 +191,95 @@ def test_rejects_non_paid_in_capital_document_form(
 
     with pytest.raises(ValueError, match=PAID_IN_CAPITAL_DOCUMENT_ACODE):
         parse_paid_in_capital_increase(xml_path, parsed_result.document)
+
+
+def _write_form(tmp_path: Path, body: str) -> Path:
+    xml_path = tmp_path / "doc.xml"
+    xml_path.write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<DOCUMENT>\n"
+        '<DOCUMENT-NAME ACODE="11306">주요사항보고서(유상증자결정)</DOCUMENT-NAME>\n'
+        f"{body}\n"
+        "</DOCUMENT>\n",
+        encoding="utf-8",
+    )
+    return xml_path
+
+
+def test_parses_bare_ampersand_without_losing_at_and_t(
+    tmp_path: Path, parsed_result: PreprocessResult
+) -> None:
+    xml_path = _write_form(
+        tmp_path,
+        """<BODY>
+<TABLE>
+<TR>
+<TD>기타 투자판단과 관련한 중요사항</TD>
+<TE ACODE="ETC_CNT">Ernst & Young</TE>
+</TR>
+</TABLE>
+</BODY>""",
+    )
+
+    result = parse_paid_in_capital_increase(xml_path, parsed_result.document)
+    fact = next(
+        item
+        for item in result.extracted_facts
+        if item.fact_key == "fundraising_other_notes"
+    )
+    assert fact.raw_value == "Ernst & Young"
+
+
+def test_parses_bare_lt_in_paragraph(
+    tmp_path: Path, parsed_result: PreprocessResult
+) -> None:
+    xml_path = _write_form(
+        tmp_path,
+        """<BODY>
+<P><참조1> 신주발행 주식수 산정 방법 </P>
+<TABLE>
+<TR>
+<TD>타법인 증권취득자금 (원)</TD>
+<TE ACODE="ANC_ACQ_AMT">1,000</TE>
+</TR>
+</TABLE>
+</BODY>""",
+    )
+
+    result = parse_paid_in_capital_increase(xml_path, parsed_result.document)
+    fact = next(
+        item
+        for item in result.extracted_facts
+        if item.fact_key == "fundraising_purpose_securities_acquisition"
+    )
+    assert fact.raw_value == "1,000"
+
+
+def test_fallback_chunk_keeps_correction_body_when_all_values_are_dash(
+    tmp_path: Path, parsed_result: PreprocessResult
+) -> None:
+    xml_path = _write_form(
+        tmp_path,
+        """<BODY>
+<P>1. 정정대상 공시서류 : 주요사항보고서(유상증자결정)</P>
+<P>3. 정정사항 공개매수 종료일 이후 회사 주가가 하락할 것이라는 전망</P>
+<TABLE>
+<TR>
+<TD>타법인 증권취득자금 (원)</TD>
+<TE ACODE="ANC_ACQ_AMT">-</TE>
+</TR>
+<TR>
+<TD>시설자금 (원)</TD>
+<TE ACODE="FND_USE1">-</TE>
+</TR>
+</TABLE>
+</BODY>""",
+    )
+
+    result = parse_paid_in_capital_increase(xml_path, parsed_result.document)
+    assert result.extracted_facts == []
+    assert len(result.evidence_chunks) == 1
+    assert "정정대상 공시서류" in result.evidence_chunks[0].text
+    assert "주가가 하락" in result.evidence_chunks[0].text
+    assert result.evidence_chunks[0].text != "주요사항보고서(유상증자결정)"
+

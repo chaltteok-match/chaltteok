@@ -225,6 +225,31 @@ def test_소제목_어순이_반대여도_인식한다(tmp_path):
     assert scopes[(Scope.SEPARATE, 2024)] == "500"
 
 
+def test_기준을_밝히지_않은_소제목은_앞_기준을_물려받지_않는다(tmp_path):
+    """카카오처럼 '가. 요약 연결 재무정보' 다음에 '나. 요약 재무정보'가 오는 문서가 있다.
+
+    두 번째 표는 별도인데 기준을 적지 않는다. 앞 소제목을 물려주면 별도 수치가
+    연결로 기록되어 3배 틀린 답이 나간다. 근거가 없으면 unknown으로 둔다.
+    """
+    body = (
+        "<P>가. 요약 연결 재무정보</P>"
+        + summary_table(rows=(row_xml("매출액", "7,871,692", "7,557,002", "6,798,742"),))
+        + "<P>나. 요약 재무정보</P>"
+        + summary_table(rows=(row_xml("매출액", "2,595,101", "2,499,600", "2,456,591"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "7,871,692"
+    assert scopes[(Scope.UNKNOWN, 2024)] == "2,595,101"
+    assert (Scope.CONSOLIDATED, 2024) in scopes
+    # 앞 기준이 물려졌다면 2,595,101도 연결로 기록되어 값이 덮였을 것이다
+    assert scopes[(Scope.CONSOLIDATED, 2024)] != "2,595,101"
+
+
 def test_소제목이_없으면_표_머리글의_기준_표기를_읽는다(tmp_path):
     """소제목 대신 '제56기(연결)'처럼 머리글에 기준을 적는 문서가 있다."""
     body = (

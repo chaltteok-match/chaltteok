@@ -105,7 +105,6 @@ def logical_path(corpus_root: Path, target: Path) -> str:
 # 주요사항보고서는 manifest의 doc_subtype이 비어 있어 report_nm에서 서식명을 뽑는다.
 # 예: "[기재정정]주요사항보고서(유상증자결정)" -> "유상증자결정"
 RE_MAJOR_FORM = re.compile(r"^(?:\[[^\]]+\])?주요사항보고서\((.+)\)$")
-RE_CORRECTION_PREFIX = re.compile(r"^\[[^\]]+\]")
 
 
 def resolve_doc_subtype(manifest_row: dict[str, Any]) -> str | None:
@@ -125,9 +124,11 @@ def resolve_doc_subtype(manifest_row: dict[str, Any]) -> str | None:
     matched = RE_MAJOR_FORM.match(report_nm)
     if matched:
         return matched.group(1)
-    # 껍데기가 없는 공시명은 정정 접두만 벗겨서 쓴다.
-    stripped = RE_CORRECTION_PREFIX.sub("", report_nm).strip()
-    return stripped or None
+    # 주요사항보고서 서식이 아니면 값을 만들지 않는다.
+    # 두산로보틱스 20230823000334처럼 공시명이 '유상증자결정'뿐인 문서는
+    # DART 서식 코드가 달라(ACODE=80518) 주요사항보고서 파서가 다루지 못한다.
+    # 여기서 같은 값을 주면 검색에서 진짜 주요사항보고서와 섞인다.
+    return None
 
 
 def build_document(manifest_row: dict[str, Any]) -> DisclosureDocument:

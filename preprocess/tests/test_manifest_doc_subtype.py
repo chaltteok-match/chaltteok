@@ -52,9 +52,11 @@ def test_이름이_서로를_포함하는_서식을_구분한다() -> None:
     assert len(subtypes) == 4
 
 
-def test_껍데기가_없는_공시명은_정정_접두만_벗긴다() -> None:
-    assert resolve_doc_subtype(row(report_nm="유상증자결정")) == "유상증자결정"
-    assert resolve_doc_subtype(row(report_nm="[기재정정]유상증자결정")) == "유상증자결정"
+def test_주요사항보고서_서식이_아니면_값을_만들지_않는다() -> None:
+    # 두산로보틱스 20230823000334는 공시명이 '유상증자결정'뿐이고 DART 서식 코드가 다르다.
+    # 같은 값을 주면 검색에서 진짜 주요사항보고서와 섞인다.
+    assert resolve_doc_subtype(row(report_nm="유상증자결정")) is None
+    assert resolve_doc_subtype(row(report_nm="[기재정정]유상증자결정")) is None
 
 
 def test_다른_공시유형은_manifest_값을_그대로_쓴다() -> None:

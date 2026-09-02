@@ -51,6 +51,9 @@ RE_SCOPE_MARKER = re.compile(
     r"요약\s*(?P<after>연결|별도|개별)\s*재무\s*정보"
     r"|(?P<before>연결|별도|개별)\s*요약\s*재무\s*정보"
 )
+# 기준을 밝히지 않은 요약재무정보 소제목: '나. 요약 재무정보'
+# 앞 소제목이 '가. 요약 연결 재무정보'였다고 해서 이 표까지 연결로 볼 수 없다.
+RE_SUMMARY_HEADING = re.compile(r"요약\s*재무\s*정보")
 # 소제목 없이 표 머리글에 기준을 적는 문서가 있다: '제44기 1분기말(연결)'
 RE_SCOPE_IN_HEADER = re.compile(r"[(（]\s*(연결|별도|개별)\s*[)）]")
 # 라벨 앞의 번호·로마자 접두 제거: '2.당기순이익', 'I.영업수익'
@@ -251,19 +254,38 @@ def scope_from_header(column_labels: list[str]) -> Scope | None:
     return found.pop() if len(found) == 1 else None
 
 
+def _heading_text(section: str, position: int, fallback: str) -> str:
+    block_start = section.rfind("<P", 0, position)
+    block_end = section.find("</P>", position)
+    if block_start != -1 and block_end != -1:
+        candidate = dart_xml.clean(section[block_start:block_end])
+        if candidate and len(candidate) <= 40:
+            return candidate
+    return fallback
+
+
 def _scope_spans(section: str) -> list[tuple[int, Scope, str]]:
-    """섹션 안의 '가. 요약연결재무정보' 류 소제목 위치를 모은다."""
-    spans = []
+    """섹션 안의 요약재무정보 소제목 위치를 모은다.
+
+    기준을 밝힌 소제목('가. 요약연결재무정보')은 그 기준으로, 밝히지 않은 소제목
+    ('나. 요약 재무정보')은 ``unknown``으로 둔다. 밝히지 않은 소제목을 건너뛰면
+    앞 소제목의 기준이 그대로 물려져 별도 표가 연결로 기록된다.
+    """
+    spans: list[tuple[int, Scope, str]] = []
+    covered: list[tuple[int, int]] = []
     for match in RE_SCOPE_MARKER.finditer(section):
         scope = SCOPE_BY_MARKER[match.group("after") or match.group("before")]
-        block_start = section.rfind("<P", 0, match.start())
-        block_end = section.find("</P>", match.start())
-        heading = match.group(0)
-        if block_start != -1 and block_end != -1:
-            candidate = dart_xml.clean(section[block_start:block_end])
-            if candidate and len(candidate) <= 40:
-                heading = candidate
-        spans.append((match.start(), scope, heading))
+        spans.append((match.start(), scope, _heading_text(section, match.start(), match.group(0))))
+        covered.append((match.start(), match.end()))
+
+    for match in RE_SUMMARY_HEADING.finditer(section):
+        if any(start <= match.start() < end for start, end in covered):
+            continue
+        spans.append(
+            (match.start(), Scope.UNKNOWN, _heading_text(section, match.start(), match.group(0)))
+        )
+
+    spans.sort(key=lambda span: span[0])
     return spans
 
 

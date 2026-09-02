@@ -9,6 +9,20 @@ PostgreSQL이 떠 있어야 하고, 테이블이 만들어져 있어야 합니�
 운영 마이그레이션 도입 전까지는 `application-local.yml`의 `spring.jpa.hibernate.ddl-auto: update`가
 Entity 기준으로 스키마를 맞춥니다. 이 설정이 빠져 있으면 `relation "disclosure_document" does not exist`로 실패합니다.
 
+`ddl-auto: update`는 이미 데이터가 있는 표에 `NOT NULL` 컬럼을 추가하지 못합니다.
+`schema_version`이 올라가 필수 컬럼이 생기면 아래처럼 나오고, 그 뒤 모든 쿼리가 실패합니다.
+
+```
+ERROR: column "extraction_status" of relation "extracted_fact" contains null values
+```
+
+로컬 DB를 비우고 다시 만들면 됩니다. 개발용 데이터만 사라집니다.
+
+```bash
+cd infra
+docker compose down -v && docker compose up -d
+```
+
 ```bash
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/result.jsonl'

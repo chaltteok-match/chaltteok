@@ -8,6 +8,7 @@ import pytest
 from chaltteok_etl.common import (
     DisclosureDocument,
     DocGroup,
+    ExtractionStatus,
     ManifestFileFormat,
     PeriodBasis,
     PreprocessResult,
@@ -90,6 +91,42 @@ def test_purpose_acodes_are_named_by_use_of_proceeds() -> None:
     assert all(
         fact_key.startswith("fundraising_") for fact_key in ACODE_FACT_KEYS.values()
     )
+
+
+def test_텍스트_항목은_정규화하지_않는다(tmp_path: Path) -> None:
+    """정관의 근거처럼 조문 전문이 오는 항목은 계산·비교 대상이 아니다.
+
+    normalized_value는 계산·비교용 값이라 길이 제한이 있다(varchar 128).
+    실제 코퍼스에는 이 항목이 2,501자인 문서가 있다. 원문은 raw_value와 근거 chunk에
+    남으므로 정규화값은 비운다(docs/data-model.md §5).
+    """
+    articles = "제9조(주식의 종류, 수 및 내용) " + "① 회사가 발행할 주식은 보통주식과 종류주식으로 한다. " * 30
+    source = tmp_path / "20250101000001.xml"
+    source.write_text(
+        "<DOCUMENT>"
+        '<DOCUMENT-NAME ACODE="11306">주요사항보고서(유상증자결정)</DOCUMENT-NAME>'
+        "<BODY><TABLE><TBODY>"
+        f'<TR><TD>정관의 근거</TD><TE ACODE="AOI_BAS">{articles}</TE></TR>'
+        '<TR><TD>타법인 증권취득자금 (원)</TD>'
+        '<TE ACODE="ANC_ACQ_AMT">1,600,000,000,000</TE></TR>'
+        "</TBODY></TABLE></BODY></DOCUMENT>",
+        encoding="utf-8",
+    )
+    document = make_document(SAMPLE_DATA_ROOT / "raw/major/한화에어로스페이스/20250408000012/20250408000012.xml")
+
+    result = parse_paid_in_capital_increase(source, document)
+
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+    basis = by_key["fundraising_articles_basis"]
+    assert basis.value_type is ValueType.TEXT
+    assert len(basis.raw_value) > 128
+    assert basis.normalized_value is None
+    assert basis.normalized_unit is None
+    assert basis.extraction_status is ExtractionStatus.OK
+
+    amount = by_key["fundraising_purpose_securities_acquisition"]
+    assert amount.normalized_value == "1600000000000"
+    assert amount.extraction_status is ExtractionStatus.OK
 
 
 def test_parser_emits_validated_preprocess_result_json(

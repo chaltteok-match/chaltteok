@@ -1,0 +1,187 @@
+"""manifest를 훑어 공시 유형별 파서를 돌리고 JSONL로 쓴다.
+
+네 공시 유형이 함께 쓰는 뼈대다. 파서 등록만 유형별로 다르고, 훑고·요약하고
+실패를 보고하는 부분은 공통이다. 파서가 없는 유형은 실패가 아니라 건너뛴 것으로 센다.
+
+실패 처리는 ``docs/data-model.md`` §9를 따른다. 파싱하지 못한 문서를 빈 결과로
+내보내지 않고, 실패가 한 건이라도 있으면 종료 코드를 0으로 반환하지 않는다.
+"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Iterable
+
+from .common.manifest import (
+    build_document,
+    iter_manifest,
+    logical_path,
+    resolve_doc_subtype,
+    resolve_main_xml,
+    resolve_source_dir,
+)
+from .common.models import PreprocessResult
+from .material.paid_in_capital import parse_paid_in_capital_increase
+from .periodic.summary_financials import (
+    UnsupportedDocument,
+    parse_summary_financials,
+)
+
+Parser = Callable[[Path, dict[str, Any]], PreprocessResult]
+Supports = Callable[[dict[str, Any]], bool]
+
+
+def _parse_major(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
+    """주요사항보고서 파서는 원문 경로와 문서를 직접 받으므로 여기서 맞춰 준다."""
+    document = build_document(manifest_row)
+    source_xml = resolve_main_xml(resolve_source_dir(corpus_root, manifest_row), manifest_row)
+    return parse_paid_in_capital_increase(source_xml, document)
+
+
+@dataclass(frozen=True)
+class ParserEntry:
+    """공시 유형 하나를 처리하는 방법.
+
+    ``supports``가 False인 문서는 실패가 아니라 대상 아님으로 센다.
+    파서가 다루지 못하는 서식까지 실패로 세면 진짜 실패가 묻힌다.
+    """
+
+    parse: Parser
+    supports: Supports
+
+
+PARSERS: dict[str, ParserEntry] = {
+    "periodic": ParserEntry(
+        parse=parse_summary_financials,
+        # pdf+html 대체 수집분은 파서가 UnsupportedDocument로 알린다.
+        supports=lambda row: True,
+    ),
+    "major": ParserEntry(
+        parse=_parse_major,
+        # 유상증자결정 서식만 파서가 있다. 나머지 서식은 아직 대상이 아니다.
+        supports=lambda row: resolve_doc_subtype(row) == "유상증자결정",
+    ),
+    # "exchange": 거래소공시 파서가 생기면 여기 등록한다.
+    # "holding": 지분공시 파서가 생기면 여기 등록한다.
+}
+
+
+@dataclass
+class RunSummary:
+    """실행 1회 결과. ``docs/data-model.md`` §9가 요구하는 요약이다."""
+
+    documents: int = 0
+    succeeded: int = 0
+    skipped_no_parser: Counter = field(default_factory=Counter)
+    skipped_unsupported: int = 0
+    evidence_chunks: int = 0
+    extracted_facts: int = 0
+    relations: int = 0
+    extraction_status: Counter = field(default_factory=Counter)
+    failures: list[tuple[str, str, str]] = field(default_factory=list)
+
+    @property
+    def failed(self) -> int:
+        return len(self.failures)
+
+    def describe(self) -> str:
+        skipped_total = sum(self.skipped_no_parser.values()) + self.skipped_unsupported
+        lines = [
+            f"전처리 요약: 문서 {self.documents}건 / 성공 {self.succeeded}건 "
+            f"/ 실패 {self.failed}건 / 건너뜀 {skipped_total}건",
+            f"  근거 {self.evidence_chunks}, 사실 {self.extracted_facts}, 관계 {self.relations}",
+        ]
+        if self.extraction_status:
+            counts = ", ".join(
+                f"{status} {count}" for status, count in sorted(self.extraction_status.items())
+            )
+            lines.append(f"  추출 상태: {counts}")
+        if self.skipped_no_parser:
+            counts = ", ".join(
+                f"{group} {count}" for group, count in sorted(self.skipped_no_parser.items())
+            )
+            lines.append(f"  파서 없음: {counts}")
+        if self.skipped_unsupported:
+            lines.append(f"  대상 아님: {self.skipped_unsupported}건")
+        for doc_id, path, reason in self.failures:
+            lines.append(f"  실패 {doc_id} ({path}): {reason}")
+        return "\n".join(lines)
+
+
+def select_rows(
+    corpus_root: Path,
+    doc_groups: Iterable[str] | None = None,
+    corp_names: Iterable[str] | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """처리할 manifest 행을 고른다."""
+    groups = set(doc_groups) if doc_groups else None
+    names = set(corp_names) if corp_names else None
+    rows: list[dict[str, Any]] = []
+    for row in iter_manifest(corpus_root):
+        if groups is not None and row.get("doc_group") not in groups:
+            continue
+        if names is not None and row.get("corp_name") not in names:
+            continue
+        rows.append(row)
+        if limit is not None and len(rows) >= limit:
+            break
+    return rows
+
+
+def run(corpus_root: Path, rows: list[dict[str, Any]], output: Path) -> RunSummary:
+    """고른 문서를 처리해 ``output``에 JSONL로 쓴다. 1줄 = PreprocessResult 1건."""
+    summary = RunSummary(documents=len(rows))
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    with output.open("w", encoding="utf-8") as sink:
+        for row in rows:
+            doc_group = row.get("doc_group")
+            entry = PARSERS.get(doc_group)
+            if entry is None:
+                summary.skipped_no_parser[doc_group] += 1
+                continue
+            if not entry.supports(row):
+                summary.skipped_unsupported += 1
+                continue
+            try:
+                result = entry.parse(corpus_root, row)
+            except UnsupportedDocument:
+                summary.skipped_unsupported += 1
+                continue
+            except Exception as error:  # noqa: BLE001 - 원인을 기록하고 계속 진행한다
+                summary.failures.append(
+                    (row.get("doc_id", "-"), _logical(corpus_root, row), _reason(error))
+                )
+                continue
+
+            sink.write(result.model_dump_json() + "\n")
+            summary.succeeded += 1
+            summary.evidence_chunks += len(result.evidence_chunks)
+            summary.extracted_facts += len(result.extracted_facts)
+            summary.relations += len(result.relations)
+            for fact in result.extracted_facts:
+                summary.extraction_status[fact.extraction_status.value] += 1
+
+    return summary
+
+
+def _logical(corpus_root: Path, row: dict[str, Any]) -> str:
+    try:
+        return logical_path(corpus_root, corpus_root / row["file_path"])
+    except Exception:  # noqa: BLE001 - 경로를 못 만들어도 실패 보고는 남긴다
+        return str(row.get("file_path", "-"))
+
+
+_MAX_REASON = 200
+
+
+def _reason(error: Exception) -> str:
+    message = str(error).strip() or type(error).__name__
+    first_line = message.splitlines()[0]
+    if len(first_line) <= _MAX_REASON:
+        return f"{type(error).__name__}: {first_line}"
+    return f"{type(error).__name__}: {first_line[:_MAX_REASON]}… (생략)"

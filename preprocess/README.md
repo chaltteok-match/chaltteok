@@ -58,3 +58,35 @@ json_line = result.model_dump_json()
 ```
 
 여러 문서를 저장할 때는 `json_line` 하나를 한 줄로 기록한 UTF-8 JSON Lines 파일을 만듭니다. 원문 텍스트와 `raw_value`는 보존하고, 기업 식별값과 논리 경로만 NFC로 정규화합니다.
+
+## 전량 전처리 실행
+
+manifest를 훑어 공시 유형별 파서를 돌리고 JSONL 한 파일로 씁니다.
+
+```bash
+cd preprocess
+python -m chaltteok_etl --corpus ../../corpus --out ../../work/preprocess-all.jsonl
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--corpus` | 코퍼스 루트 경로 (필수) |
+| `--out` | 출력 JSONL 경로 (필수) |
+| `--doc-group` | 처리할 공시 유형. 여러 번 지정 가능. 생략하면 전부 |
+| `--corp-name` | 처리할 법인명. 여러 번 지정 가능 |
+| `--limit` | 처리할 문서 수 상한. 시험 실행용 |
+
+파서가 등록되지 않은 공시 유형은 실패가 아니라 건너뜁니다. 파서를 추가하면
+`chaltteok_etl/runner.py`의 `PARSERS`에 등록합니다.
+
+실행이 끝나면 문서 수, 성공·실패·건너뜀 건수, 근거·사실·관계 수, 추출 상태별 건수를
+요약해 출력합니다. **실패가 한 건이라도 있으면 종료 코드가 0이 아닙니다**
+(`docs/data-model.md` §9). 부분 결과는 출력 파일에 남습니다.
+
+### 적재까지
+
+```bash
+cd ../backend
+./gradlew bootRun --args='--spring.profiles.active=local,load \
+    --chaltteok.load.path=/절대/경로/preprocess-all.jsonl'
+```

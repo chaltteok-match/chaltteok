@@ -74,10 +74,10 @@ class FundraisingAnswerHandlerTest {
                 REPORT_DATE,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자",
+                "유상증자결정",
                 REPORT_DATE
         )).thenReturn(List.of(document));
         when(factRepository.findByDocumentDocId("major_20250408000012"))
@@ -123,10 +123,10 @@ class FundraisingAnswerHandlerTest {
                 REPORT_DATE,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 eq("한화에어로스페이스"),
                 eq(DocGroup.MAJOR),
-                eq("유상증자"),
+                eq("유상증자결정"),
                 eq(REPORT_DATE)
         )).thenReturn(List.of(aprilEighth));
         when(factRepository.findByDocumentDocId("major_20250408000012"))
@@ -136,13 +136,14 @@ class FundraisingAnswerHandlerTest {
 
         assertThat(result.isAnswerable()).isTrue();
         assertThat(result.evidences().getFirst().evidenceText()).contains("1,600,000,000,000");
-        verify(documentRepository).findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        verify(documentRepository).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자",
+                "유상증자결정",
                 REPORT_DATE
         );
-        verify(documentRepository, never()).findByCorpNameAndDocGroupAndReportNmContaining(
+        // 공시일로 좁히지 않은 조회는 쓰지 않는다. 같은 서식이 여러 날 제출되기 때문이다.
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtype(
                 any(),
                 any(),
                 any()
@@ -155,7 +156,7 @@ class FundraisingAnswerHandlerTest {
 
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("공시일");
-        verify(documentRepository, never()).findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(),
                 any(),
                 any(),
@@ -165,10 +166,10 @@ class FundraisingAnswerHandlerTest {
 
     @Test
     void returnsUnavailableWhenSearchFindsNoDocument() {
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자",
+                "유상증자결정",
                 REPORT_DATE
         )).thenReturn(List.of());
 
@@ -188,7 +189,7 @@ class FundraisingAnswerHandlerTest {
                 REPORT_DATE,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(),
                 any(),
                 any(),
@@ -218,7 +219,7 @@ class FundraisingAnswerHandlerTest {
                 REPORT_DATE,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(),
                 any(),
                 any(),
@@ -253,7 +254,7 @@ class FundraisingAnswerHandlerTest {
                 REPORT_DATE,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(),
                 any(),
                 any(),
@@ -291,10 +292,10 @@ class FundraisingAnswerHandlerTest {
                 APRIL_18,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자",
+                "유상증자결정",
                 APRIL_18
         )).thenReturn(List.of(original, firstCorrection, secondCorrection));
         when(factRepository.findByDocumentDocId("major_20250418000538"))
@@ -328,7 +329,7 @@ class FundraisingAnswerHandlerTest {
                 REPORT_DATE,
                 true
         );
-        when(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(),
                 any(),
                 any(),

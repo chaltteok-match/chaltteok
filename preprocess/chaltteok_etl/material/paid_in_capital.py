@@ -21,6 +21,7 @@ from chaltteok_etl.common import (
     DisclosureDocument,
     EvidenceChunk,
     ExtractedFact,
+    ExtractionStatus,
     PeriodBasis,
     PreprocessResult,
     Scope,
@@ -28,7 +29,7 @@ from chaltteok_etl.common import (
     ValueType,
 )
 
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION = "0.2"
 PARSER_VERSION = "0.1.2"
 
 # DART DOCUMENT-NAME ACODE. 유상증자결정 서식 식별 코드.
@@ -325,6 +326,11 @@ def _to_fact(
         as_of_date=as_of_date,
         period_basis=period_basis,
         scope=Scope.NOT_APPLICABLE,
+        extraction_status=(
+            ExtractionStatus.OK
+            if normalized_value is not None
+            else ExtractionStatus.UNIT_MISSING
+        ),
     )
 
 

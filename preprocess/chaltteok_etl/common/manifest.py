@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -101,6 +102,34 @@ def logical_path(corpus_root: Path, target: Path) -> str:
     return unicodedata.normalize("NFC", relative.as_posix())
 
 
+# 주요사항보고서는 manifest의 doc_subtype이 비어 있어 report_nm에서 서식명을 뽑는다.
+# 예: "[기재정정]주요사항보고서(유상증자결정)" -> "유상증자결정"
+RE_MAJOR_FORM = re.compile(r"^(?:\[[^\]]+\])?주요사항보고서\((.+)\)$")
+RE_CORRECTION_PREFIX = re.compile(r"^\[[^\]]+\]")
+
+
+def resolve_doc_subtype(manifest_row: dict[str, Any]) -> str | None:
+    """문서 세부 유형. 정기·거래소·지분공시는 manifest 값을 그대로 쓴다.
+
+    주요사항보고서만 manifest에 값이 없어 공시명에서 서식명을 뽑는다.
+    report_nm은 ``[기재정정]`` 접두가 절반가량 붙어 있어 검색 키로 쓰기 어렵다.
+    서식명으로 정규화하면 ``자기주식취득결정``과 ``자기주식처분결정``처럼
+    이름이 겹치는 서식도 구분된다.
+    """
+    existing = manifest_row.get("doc_subtype")
+    if existing:
+        return existing
+    if manifest_row.get("doc_group") != "major":
+        return existing
+    report_nm = manifest_row.get("report_nm") or ""
+    matched = RE_MAJOR_FORM.match(report_nm)
+    if matched:
+        return matched.group(1)
+    # 껍데기가 없는 공시명은 정정 접두만 벗겨서 쓴다.
+    stripped = RE_CORRECTION_PREFIX.sub("", report_nm).strip()
+    return stripped or None
+
+
 def build_document(manifest_row: dict[str, Any]) -> DisclosureDocument:
     """manifest 한 행을 ``DisclosureDocument``로 옮긴다 (docs/data-model.md §3)."""
     rcept_dt = manifest_row["rcept_dt"]
@@ -113,7 +142,7 @@ def build_document(manifest_row: dict[str, Any]) -> DisclosureDocument:
         industry=manifest_row["industry"],
         sector=manifest_row["sector"],
         doc_group=manifest_row["doc_group"],
-        doc_subtype=manifest_row.get("doc_subtype"),
+        doc_subtype=resolve_doc_subtype(manifest_row),
         report_nm=manifest_row["report_nm"],
         rcept_no=manifest_row["rcept_no"],
         rcept_dt=date(int(rcept_dt[0:4]), int(rcept_dt[4:6]), int(rcept_dt[6:8])),

@@ -98,7 +98,7 @@ def test_parser_emits_validated_preprocess_result_json(
     payload = parsed_result.model_dump(mode="json")
     restored = PreprocessResult.model_validate_json(parsed_result.model_dump_json())
 
-    assert payload["schema_version"] == "0.1"
+    assert payload["schema_version"] == "0.2"
     assert payload["parser_version"] == "0.1.2"
     assert payload["document"]["doc_id"] == "major_20250408000012"
     assert payload["document"]["doc_group"] == "major"

@@ -337,7 +337,7 @@ def test_id_규칙과_참조_무결성을_지킨다(tmp_path):
     for index, fact in enumerate(result.extracted_facts):
         assert fact.fact_id == f"{DOC_ID}:fact:{index:04d}"
         assert fact.chunk_id in chunk_ids
-    assert result.schema_version == "0.1"
+    assert result.schema_version == "0.2"
     assert result.parser_version == "0.1.0"
 
 

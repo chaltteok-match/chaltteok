@@ -1,6 +1,8 @@
 package com.chaltteok.disclosure.load;
 
 import com.chaltteok.disclosure.load.LoadSummary.LoadFailure;
+import com.chaltteok.disclosure.model.ExtractedFact;
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.model.PreprocessResult;
 import com.chaltteok.disclosure.persistence.DisclosurePersistenceService;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -13,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,26 +92,39 @@ public class JsonlDisclosureLoader {
         int chunks = 0;
         int facts = 0;
         int relations = 0;
+        Map<ExtractionStatus, Integer> statusCounts = new EnumMap<>(ExtractionStatus.class);
         for (SavedCounts counts : savedPerDocument.values()) {
             chunks += counts.evidenceChunks();
             facts += counts.extractedFacts();
             relations += counts.relations();
+            counts.statusCounts().forEach((status, count) -> statusCounts.merge(status, count, Integer::sum));
         }
 
         LoadSummary summary = new LoadSummary(
-                totalRecords, succeeded, savedPerDocument.size(), chunks, facts, relations, failures);
+                totalRecords, succeeded, savedPerDocument.size(), chunks, facts, relations,
+                statusCounts, failures);
         log.info("{}", summary.describe());
         return summary;
     }
 
     /** 문서 1건이 남긴 행 수. 같은 doc_id를 다시 적재하면 이 값으로 교체된다. */
-    private record SavedCounts(int evidenceChunks, int extractedFacts, int relations) {
+    private record SavedCounts(
+            int evidenceChunks,
+            int extractedFacts,
+            int relations,
+            Map<ExtractionStatus, Integer> statusCounts
+    ) {
 
         static SavedCounts of(PreprocessResult result) {
+            Map<ExtractionStatus, Integer> counts = new EnumMap<>(ExtractionStatus.class);
+            for (ExtractedFact fact : result.extractedFacts()) {
+                counts.merge(fact.extractionStatus(), 1, Integer::sum);
+            }
             return new SavedCounts(
                     result.evidenceChunks().size(),
                     result.extractedFacts().size(),
-                    result.relations().size());
+                    result.relations().size(),
+                    counts);
         }
     }
 

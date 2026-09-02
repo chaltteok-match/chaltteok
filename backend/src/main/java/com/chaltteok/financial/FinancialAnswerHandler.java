@@ -4,6 +4,7 @@ import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.model.enums.Scope;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
@@ -96,11 +97,12 @@ public class FinancialAnswerHandler implements AnswerHandler {
         ExtractedFactEntity targetFact = target.get();
 
         if (targetFact.getNormalizedValue() == null) {
-            // 전처리에서 단위를 확인하지 못한 값이다. 원문 수치만으로 금액을 단정하지 않는다.
+            // 값이 비는 이유는 하나가 아니다. 전처리가 남긴 상태를 그대로 전한다.
+            // 이유를 단정하면 파서 결함이 정보 한계로 위장된다(docs/data-model.md §9).
             return AnswerHandlerResult.unavailable(
                     List.of(evidenceOf(document, targetFact)),
-                    searchSummary + " → 원문에 단위 표기가 없어 금액을 확정할 수 없음",
-                    "공시 원문에 단위 표기가 없어 금액을 확정할 수 없습니다");
+                    searchSummary + " → " + unavailableTrace(targetFact.getExtractionStatus()),
+                    unavailableReason(targetFact.getExtractionStatus()));
         }
 
         return parsed.isComparison()
@@ -279,6 +281,18 @@ public class FinancialAnswerHandler implements AnswerHandler {
         if (!evidences.contains(evidence)) {
             evidences.add(evidence);
         }
+    }
+
+    private static String unavailableTrace(ExtractionStatus status) {
+        return status == ExtractionStatus.UNIT_MISSING
+                ? "원문에 단위 표기가 없어 금액을 확정할 수 없음"
+                : "전처리가 값을 정규화하지 못함(상태=" + status + ")";
+    }
+
+    private static String unavailableReason(ExtractionStatus status) {
+        return status == ExtractionStatus.UNIT_MISSING
+                ? "공시 원문에 단위 표기가 없어 금액을 확정할 수 없습니다"
+                : "전처리가 이 수치를 정규화하지 못해 금액을 확정할 수 없습니다";
     }
 
     /** 사유를 구분하기 위한 값. 답변에 쓸 수치를 고르는 데는 쓰지 않는다. */

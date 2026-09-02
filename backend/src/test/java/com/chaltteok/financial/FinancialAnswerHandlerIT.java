@@ -10,6 +10,9 @@ import com.chaltteok.disclosure.model.PreprocessResult;
 import com.chaltteok.disclosure.model.enums.ContentType;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.model.enums.ManifestFileFormat;
+import com.chaltteok.disclosure.model.enums.ExtractionStatus;
+import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
+import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import com.chaltteok.disclosure.model.enums.PeriodBasis;
 import com.chaltteok.disclosure.model.enums.Scope;
 import com.chaltteok.disclosure.model.enums.SourceFormat;
@@ -62,6 +65,9 @@ class FinancialAnswerHandlerIT {
 
     @Autowired
     private DisclosurePersistenceService persistenceService;
+
+    @Autowired
+    private ExtractedFactRepository factRepository;
 
     @BeforeEach
     void setUp() {
@@ -199,6 +205,18 @@ class FinancialAnswerHandlerIT {
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.evidences()).hasSize(1);
         assertThat(result.unavailableReason()).contains("단위 표기가 없어");
+    }
+
+    @Test
+    void storesExtractionStatusWithEachFact() {
+        // 값이 빈 이유를 데이터에 남겨야 파서 결함과 정보 한계를 구분할 수 있다.
+        List<ExtractedFactEntity> facts =
+                factRepository.findByDocumentDocId("periodic_20240311000892");
+
+        assertThat(facts).isNotEmpty();
+        assertThat(facts).allMatch(fact -> fact.getExtractionStatus() == ExtractionStatus.UNIT_MISSING);
+        assertThat(factRepository.findByDocumentDocId("periodic_20250311001085"))
+                .allMatch(fact -> fact.getExtractionStatus() == ExtractionStatus.OK);
     }
 
     @Test
@@ -378,7 +396,11 @@ class FinancialAnswerHandlerIT {
                         balance ? null : end,
                         balance ? end : null,
                         balance ? PeriodBasis.POINT_IN_TIME : PeriodBasis.CUMULATIVE,
-                        scope));
+                        scope,
+                        // 단위를 확인하지 못한 값은 정규화값이 비고 상태가 남는다.
+                        normalizedValues[index] == null
+                                ? ExtractionStatus.UNIT_MISSING
+                                : ExtractionStatus.OK));
             }
         }
 

@@ -92,10 +92,10 @@ class DisclosureDocumentSearchIT {
     @Test
     void findsHanwhaMajorPaidInCapitalIncreaseAmongMixedDocuments() {
         List<DisclosureDocumentEntity> found = documentRepository
-                .findByCorpNameAndDocGroupAndReportNmContaining(
+                .findByCorpNameAndDocGroupAndDocSubtype(
                         "한화에어로스페이스",
                         DocGroup.MAJOR,
-                        "유상증자"
+                        "유상증자결정"
                 );
 
         assertThat(found).extracting(DisclosureDocumentEntity::getDocId)
@@ -107,27 +107,35 @@ class DisclosureDocumentSearchIT {
 
     @Test
     void doesNotFindDocumentWhenCorpNameDiffers() {
-        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContaining(
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                 "삼성SDI",
                 DocGroup.MAJOR,
-                "유상증자"
+                "유상증자결정"
         )).extracting(DisclosureDocumentEntity::getDocId)
                 .doesNotContain(TARGET_DOC_ID)
                 .containsExactly("major_20250301000001");
 
-        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContaining(
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                 "OCI홀딩스",
                 DocGroup.MAJOR,
-                "유상증자"
+                "유상증자결정"
         )).isEmpty();
     }
 
     @Test
     void doesNotFindDocumentWhenDocGroupDiffers() {
-        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContaining(
+        // doc_subtype은 doc_group 안에서만 의미가 있다.
+        // 공시명에 '유상증자'가 들어간 사업보고서가 섞여 있어도 서식명으로는 걸리지 않는다.
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                 "한화에어로스페이스",
                 DocGroup.PERIODIC,
-                "유상증자"
+                "유상증자결정"
+        )).isEmpty();
+
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스",
+                DocGroup.PERIODIC,
+                "annual"
         )).extracting(DisclosureDocumentEntity::getDocId)
                 .doesNotContain(TARGET_DOC_ID)
                 .containsExactly("periodic_20250311000012");
@@ -136,10 +144,10 @@ class DisclosureDocumentSearchIT {
     @Test
     void doesNotFindTreasuryStockDocumentWithoutKeyword() {
         assertThat(documentRepository.findById("major_20250115000001")).isPresent();
-        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContaining(
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자"
+                "유상증자결정"
         )).extracting(DisclosureDocumentEntity::getDocId)
                 .doesNotContain("major_20250115000001")
                 .containsExactlyInAnyOrder(TARGET_DOC_ID, "major_20250627000349");
@@ -147,18 +155,18 @@ class DisclosureDocumentSearchIT {
 
     @Test
     void findsOnlyDocumentsOnAskedReceiptDate() {
-        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자",
+                "유상증자결정",
                 LocalDate.of(2025, 4, 8)
         )).extracting(DisclosureDocumentEntity::getDocId)
                 .containsExactly(TARGET_DOC_ID);
 
-        assertThat(documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+        assertThat(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",
                 DocGroup.MAJOR,
-                "유상증자",
+                "유상증자결정",
                 LocalDate.of(2025, 6, 27)
         )).extracting(DisclosureDocumentEntity::getDocId)
                 .containsExactly("major_20250627000349");
@@ -186,7 +194,7 @@ class DisclosureDocumentSearchIT {
                 "006400",
                 "00126380",
                 DocGroup.MAJOR,
-                null,
+                "유상증자결정",
                 "주요사항보고서(유상증자결정)",
                 "20250301000001",
                 LocalDate.of(2025, 3, 1),
@@ -203,7 +211,7 @@ class DisclosureDocumentSearchIT {
                 "012450",
                 "00126566",
                 DocGroup.MAJOR,
-                null,
+                "유상증자결정",
                 "주요사항보고서(유상증자결정)",
                 "20250627000349",
                 LocalDate.of(2025, 6, 27),
@@ -245,7 +253,7 @@ class DisclosureDocumentSearchIT {
             String sourcePath
     ) {
         return new PreprocessResult(
-                "0.1",
+                "0.2",
                 "0.1.0",
                 new DisclosureDocument(
                         docId,

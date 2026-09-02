@@ -10,21 +10,24 @@ import org.springframework.data.repository.query.Param;
 
 public interface DisclosureDocumentRepository extends JpaRepository<DisclosureDocumentEntity, String> {
 
-    // TODO: report_nm LIKE 검색은 자금조달 유형이 늘어나면(CB·EB·무상증자 등)
-    // 확장성이 떨어짐. 파서가 이미 문서 유형을 판별하고 있으므로,
-    // 구조화된 분류 필드(예: doc_subtype 재사용 또는 신규 필드 추가)로
-    // 전환하는 걸 팀 논의 안건으로 남김. data-model.md 수정 필요
-    // (schema_version 상향 포함), 팀원과 상의 후 결정.
-    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupAndReportNmContaining(
+    /**
+     * 기업·공시유형·서식명으로 문서를 찾는다.
+     *
+     * <p>{@code report_nm}은 절반가량에 {@code [기재정정]} 접두가 붙고
+     * {@code 자기주식취득결정}과 {@code 자기주식처분결정}처럼 이름이 겹쳐서 검색 키로 쓰기 어렵다.
+     * 전처리가 공시명에서 뽑아 둔 {@code doc_subtype}으로 찾는다(docs/data-model.md §3).
+     */
+    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupAndDocSubtype(
             String corpName,
             DocGroup docGroup,
-            String keyword
+            String docSubtype
     );
 
-    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+    /** 같은 서식이 여러 날 제출되므로 공시일까지 좁힌다. */
+    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
             String corpName,
             DocGroup docGroup,
-            String keyword,
+            String docSubtype,
             LocalDate rceptDt
     );
 

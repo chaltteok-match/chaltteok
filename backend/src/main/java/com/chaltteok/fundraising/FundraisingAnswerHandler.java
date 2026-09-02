@@ -45,6 +45,9 @@ public class FundraisingAnswerHandler implements AnswerHandler {
 
     static final String SECURITIES_ACQUISITION_FACT_KEY =
             "fundraising_purpose_securities_acquisition";
+    /** 검색 키. 전처리가 공시명에서 뽑아 둔 서식명이다(docs/data-model.md §3). */
+    static final String DOC_SUBTYPE = "유상증자결정";
+    /** 질문이 유상증자를 묻는지 판단하는 키워드. 문서 검색에는 쓰지 않는다. */
     static final String REPORT_KEYWORD = "유상증자";
     static final List<String> KNOWN_CORP_NAMES = List.of("한화에어로스페이스");
     private static final Pattern KOREAN_REPORT_DATE = Pattern.compile(
@@ -83,19 +86,19 @@ public class FundraisingAnswerHandler implements AnswerHandler {
         LocalDate reportDate = resolveReportDate(question);
         if (reportDate == null) {
             return AnswerHandlerResult.unavailable(
-                    "기업명=" + corpName + ", 공시유형=major, 공시명키워드=" + REPORT_KEYWORD + " 검색",
+                    "기업명=" + corpName + ", 공시유형=major, 서식=" + DOC_SUBTYPE + " 검색",
                     "질문에서 공시일(yyyy년 M월 d일)을 읽지 못해 유상증자 공시를 특정하지 못했습니다"
             );
         }
 
         String searchSummary = "기업명=" + corpName
-                + ", 공시유형=major, 공시명키워드=" + REPORT_KEYWORD
+                + ", 공시유형=major, 서식=" + DOC_SUBTYPE
                 + ", 공시일=" + reportDate + " 검색";
         List<DisclosureDocumentEntity> documents =
-                documentRepository.findByCorpNameAndDocGroupAndReportNmContainingAndRceptDt(
+                documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                         corpName,
                         DocGroup.MAJOR,
-                        REPORT_KEYWORD,
+                        DOC_SUBTYPE,
                         reportDate
                 );
         if (documents.isEmpty()) {

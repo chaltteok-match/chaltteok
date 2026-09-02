@@ -28,6 +28,7 @@ from ..common.manifest import (
 from ..common.models import (
     ContentType,
     EvidenceChunk,
+    ExtractionStatus,
     ExtractedFact,
     PeriodBasis,
     PreprocessResult,
@@ -38,7 +39,7 @@ from ..common.models import (
 from . import dart_xml
 
 PARSER_VERSION = "0.1.0"
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION = "0.2"
 SECTION_TITLE_KEYWORDS = ("요약재무정보", "요약연결재무정보")
 
 RE_PERIOD_NO = re.compile(r"제\s*(\d+)\s*기")
@@ -409,6 +410,11 @@ def parse_summary_financials(
                             else PeriodBasis.CUMULATIVE
                         ),
                         scope=scope,
+                        extraction_status=(
+                            ExtractionStatus.OK
+                            if normalized is not None
+                            else ExtractionStatus.UNIT_MISSING
+                        ),
                     )
                 )
 

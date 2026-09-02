@@ -303,7 +303,9 @@ def _to_fact(
         period_basis = PeriodBasis.POINT_IN_TIME
         as_of_date = document.rcept_dt
     else:
-        normalized_value = cell.raw_value
+        # 텍스트 항목은 계산·비교 대상이 아니라 정규화하지 않는다(docs/data-model.md §5).
+        # 정관의 근거처럼 조문 전문이 들어오는 항목이 있어, 원문은 raw_value와 근거 chunk에만 둔다.
+        normalized_value = None
         period_basis = PeriodBasis.NOT_APPLICABLE
         as_of_date = None
 
@@ -327,8 +329,9 @@ def _to_fact(
         period_basis=period_basis,
         scope=Scope.NOT_APPLICABLE,
         extraction_status=(
+            # 텍스트 항목은 정규화 대상이 아니므로 값이 비어도 정상이다.
             ExtractionStatus.OK
-            if normalized_value is not None
+            if spec.value_type is not ValueType.NUMBER or normalized_value is not None
             else ExtractionStatus.UNIT_MISSING
         ),
     )

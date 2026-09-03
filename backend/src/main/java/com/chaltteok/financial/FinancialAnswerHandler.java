@@ -2,6 +2,7 @@ package com.chaltteok.financial;
 
 import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.KoreanParticle;
 import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.model.enums.ExtractionStatus;
@@ -85,9 +86,10 @@ public class FinancialAnswerHandler implements AnswerHandler {
             String reason = onlyPartialPeriod
                     ? "'%s'에는 %d년 %s가 연간 수치가 아니라 일부 기간 누적으로만 있어 연간 값으로 답할 수 없습니다"
                             .formatted(document.getReportNm(), parsed.targetYear(), parsed.itemLabel())
-                    : "'%s'에서 %d년 %s기준 %s를 찾지 못했습니다".formatted(
+                    : "'%s'에서 %d년 %s기준 %s%s 찾지 못했습니다".formatted(
                             document.getReportNm(), parsed.targetYear(),
-                            scopeText(parsed.scope()), parsed.itemLabel());
+                            scopeText(parsed.scope()), parsed.itemLabel(),
+                            KoreanParticle.object(parsed.itemLabel()));
             return AnswerHandlerResult.unavailable(
                     searchSummary + (onlyPartialPeriod
                             ? " → 연간 수치 없음(일부 기간 누적만 존재)"
@@ -339,6 +341,7 @@ public class FinancialAnswerHandler implements AnswerHandler {
         if (parsed.factKey() == null) {
             missing.add("재무 항목");
         }
-        return "질문에서 " + String.join("·", missing) + "을(를) 식별하지 못했습니다";
+        String parts = String.join("·", missing);
+        return "질문에서 %s%s 식별하지 못했습니다".formatted(parts, KoreanParticle.object(parts));
     }
 }

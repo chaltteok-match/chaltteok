@@ -44,9 +44,10 @@ class FundraisingHcxLiveApiTest {
         HcxResult result = hcxClient.generate(prompt);
 
         assertThat(result.content()).isNotBlank();
-        assertThat(result.content())
+        // 모델은 '타법인'을 '타 법인'으로 띄어 쓰기도 한다. 뜻이 같으므로 공백을 지우고 본다.
+        assertThat(result.content().replaceAll("\\s", ""))
                 .contains("타법인")
-                .containsAnyOf("1.6조", "1조 6천", "1,600,000,000,000", "1600000000000", "1.6 조");
+                .containsAnyOf("1.6조", "1조6천", "1,600,000,000,000", "1600000000000");
         assertThat(result.content()).doesNotMatch("(?s).*총 조달금액은\\s*1.*");
     }
 }

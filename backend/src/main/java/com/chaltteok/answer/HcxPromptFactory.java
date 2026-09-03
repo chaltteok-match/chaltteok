@@ -39,6 +39,7 @@ public class HcxPromptFactory {
 
                 위 근거만 사용해 질문에 답하세요.
                 근거가 특정 자금조달 목적 금액이면 그 목적을 답변에 명시하고, 총 조달금액이라고 쓰지 마세요.
+                처리 과정 요약에 목적별 합산이 있으면 그 합을 총 조달금액으로 답하고, 한 목적 금액만 총액처럼 쓰지 마세요.
                 근거가 계약·투자 공시면 계약금액과 매출액 대비 비율을 구분해서 쓰고, 비율을 금액으로 바꾸지 마세요.
                 """.formatted(question, processSummary, retrievedContext);
         return new HcxPrompt(SYSTEM_PROMPT, userPrompt);

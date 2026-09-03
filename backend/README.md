@@ -62,6 +62,20 @@ cd backend
 프로필과 무관하게 빈으로 존재합니다. 다만 이를 호출하는 것은 위 러너뿐이므로,
 `load` 없이 실행하면 아무것도 적재되지 않습니다.
 
+## Handler 선택 순서
+
+`AnswerHandlerSelector`는 `supports()`가 참인 **첫 번째** Handler를 쓰므로 순서가 답을 바꿉니다.
+등록 순서에 좌우되지 않도록 `@Order`로 명시합니다.
+
+| 순서 | Handler | 공시 유형 |
+| --- | --- | --- |
+| 10 | `ExchangeAnswerHandler` | 거래소공시 |
+| 20 | `FundraisingAnswerHandler` | 주요사항보고서(유상증자결정) |
+| 30 | `FinancialAnswerHandler` | 정기공시 |
+
+서식을 특정하는 Handler를 앞에 둡니다. "공급계약금액이 최근 매출액 대비 몇 %인가" 같은 질문은
+'매출액'을 품고 있어 정기공시 Handler도 처리하겠다고 답하기 때문입니다.
+
 ## HyperCLOVA X 클라이언트
 
 `AnswerService`가 Handler 근거로 프롬프트를 만들고 `HcxClient`를 호출합니다. 클라이언트는 기본적으로 비활성화되어 있어 API 키가 없는 로컬 환경과 CI에서도 애플리케이션과 테스트를 실행할 수 있습니다. `HCX_ENABLED=true`이면 CLOVA Studio OpenAI 호환 API를 실제로 호출합니다.

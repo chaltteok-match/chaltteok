@@ -2,6 +2,7 @@ package com.chaltteok.financial;
 
 import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.KoreanAmountFormatter;
 import com.chaltteok.answer.KoreanParticle;
 import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
@@ -19,6 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 모두 문서 한 건으로 처리한다. 근거 조립까지만 하고 최종 문장은 HCX가 만든다.
  */
 @Component
+@Order(30)
 @ConditionalOnProperty(name = "chaltteok.disclosure.persistence.enabled", havingValue = "true")
 public class FinancialAnswerHandler implements AnswerHandler {
 

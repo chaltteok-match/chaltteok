@@ -64,4 +64,14 @@ public interface DisclosureDocumentRepository extends JpaRepository<DisclosureDo
      */
     @Query("select distinct d.corpName from DisclosureDocumentEntity d where d.docGroup = :docGroup")
     List<String> findDistinctCorpNamesByDocGroup(@Param("docGroup") DocGroup docGroup);
+
+    /** 해당 서식이 적재된 법인명만 가져온다. 유상증자 질문에 자기주식만 있는 기업을 넣지 않기 위해서다. */
+    @Query("""
+            select distinct d.corpName from DisclosureDocumentEntity d
+            where d.docGroup = :docGroup and d.docSubtype = :docSubtype
+            """)
+    List<String> findDistinctCorpNamesByDocGroupAndDocSubtype(
+            @Param("docGroup") DocGroup docGroup,
+            @Param("docSubtype") String docSubtype
+    );
 }

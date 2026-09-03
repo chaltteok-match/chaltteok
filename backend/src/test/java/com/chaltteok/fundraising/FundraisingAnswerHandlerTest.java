@@ -49,6 +49,9 @@ class FundraisingAnswerHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new FundraisingAnswerHandler(documentRepository, factRepository);
+        when(documentRepository.findDistinctCorpNamesByDocGroupAndDocSubtype(
+                DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of("한화에어로스페이스", "삼성SDI"));
     }
 
     @Test
@@ -61,9 +64,14 @@ class FundraisingAnswerHandlerTest {
     @Test
     void doesNotSupportUnrelatedOrIncompleteQuestions() {
         assertThat(handler.supports("예시전자의 연결 매출액은?")).isFalse();
-        assertThat(handler.supports("삼성SDI의 유상증자결정 조달금액은?")).isFalse();
+        assertThat(handler.supports("카카오의 유상증자결정 조달금액은?")).isFalse();
         assertThat(handler.supports("한화에어로스페이스 자기주식 취득 규모는?")).isFalse();
         assertThat(handler.supports(null)).isFalse();
+    }
+
+    @Test
+    void supportsLoadedCompanyOtherThanHanwha() {
+        assertThat(handler.supports("삼성SDI의 유상증자결정 조달금액은?")).isTrue();
     }
 
     @Test
@@ -202,7 +210,7 @@ class FundraisingAnswerHandlerTest {
 
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.evidences()).isEmpty();
-        assertThat(result.unavailableReason()).contains("ANC_ACQ_AMT");
+        assertThat(result.unavailableReason()).contains("타법인");
     }
 
     @Test
@@ -348,15 +356,119 @@ class FundraisingAnswerHandlerTest {
                 .doesNotContain("major_20250408000010");
     }
 
+    @Test
+    void answersFacilityPurposeFromSameDocument() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(
+                        purposeFact(document, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                                "시설자금 (원)", "700,020,800,000", "700020800000"),
+                        amountFact(document, "1,600,000,000,000", "1600000000000")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 시설자금은 얼마인가?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("700,020,800,000");
+        assertThat(result.processSummary())
+                .contains("fundraising_purpose_facility")
+                .contains("700,020,800,000원")
+                .doesNotContain("1,600,000,000,000");
+    }
+
+    @Test
+    void sumsPurposeAmountsForTotalProceedsQuestion() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(
+                        purposeFact(document, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                                "시설자금 (원)", "700,020,800,000", "700020800000"),
+                        amountFact(document, "1,600,000,000,000", "1600000000000")
+                ));
+
+        AnswerHandlerResult result = handler.handle("Q-FUND", LEGACY_TOTAL_PROCEEDS_QUESTION);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.processSummary())
+                .contains("자금 사용 목적 합계")
+                .contains("700,020,800,000원")
+                .contains("1,600,000,000,000원")
+                .contains("2300020800000원")
+                .contains("2조 3,000억원");
+        assertThat(result.evidences())
+                .extracting(RetrievedEvidence::evidenceText)
+                .anyMatch(text -> text.contains("시설자금"))
+                .anyMatch(text -> text.contains("타법인 증권취득자금"));
+    }
+
+    @Test
+    void answersSecuritiesAcquisitionForOtherLoadedCompany() {
+        DisclosureDocumentEntity document = fundraisingDocument(
+                "major_20240101000001",
+                "20240101000001",
+                LocalDate.of(2024, 1, 1),
+                true,
+                "삼성SDI"
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                "삼성SDI",
+                DocGroup.MAJOR,
+                "유상증자결정",
+                LocalDate.of(2024, 1, 1)
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20240101000001"))
+                .thenReturn(List.of(amountFact(document, "100,000,000,000", "100000000000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "삼성SDI가 2024년 1월 1일 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences().getFirst().companyName()).isEqualTo("삼성SDI");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("100,000,000,000");
+    }
+
     private static DisclosureDocumentEntity hanwhaFundraisingDocument(
             String docId,
             String rceptNo,
             LocalDate rceptDt,
             boolean correction
     ) {
+        return fundraisingDocument(docId, rceptNo, rceptDt, correction, "한화에어로스페이스");
+    }
+
+    private static DisclosureDocumentEntity fundraisingDocument(
+            String docId,
+            String rceptNo,
+            LocalDate rceptDt,
+            boolean correction,
+            String corpName
+    ) {
         DisclosureDocumentEntity document = new DisclosureDocumentEntity();
         document.setDocId(docId);
-        document.setCorpName("한화에어로스페이스");
+        document.setCorpName(corpName);
         document.setReportNm("주요사항보고서(유상증자결정)");
         document.setRceptNo(rceptNo);
         document.setRceptDt(rceptDt);
@@ -370,11 +482,27 @@ class FundraisingAnswerHandlerTest {
             String rawValue,
             String normalizedValue
     ) {
+        return purposeFact(
+                document,
+                FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY,
+                "4. 자금조달의 목적 > 타법인 증권취득자금 (원)",
+                rawValue,
+                normalizedValue
+        );
+    }
+
+    private static ExtractedFactEntity purposeFact(
+            DisclosureDocumentEntity document,
+            String factKey,
+            String label,
+            String rawValue,
+            String normalizedValue
+    ) {
         ExtractedFactEntity fact = new ExtractedFactEntity();
-        fact.setFactId(document.getDocId() + ":fact:0003");
+        fact.setFactId(document.getDocId() + ":fact:" + factKey);
         fact.setDocument(document);
-        fact.setFactKey(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
-        fact.setLabel("4. 자금조달의 목적 > 타법인 증권취득자금 (원)");
+        fact.setFactKey(factKey);
+        fact.setLabel(label);
         fact.setRawValue(rawValue);
         fact.setRawUnit("원");
         fact.setNormalizedValue(normalizedValue);

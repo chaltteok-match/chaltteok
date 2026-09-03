@@ -50,4 +50,38 @@ class FundraisingHcxLiveApiTest {
                 .containsAnyOf("1.6조", "1조6천", "1,600,000,000,000", "1600000000000");
         assertThat(result.content()).doesNotMatch("(?s).*총 조달금액은\\s*1.*");
     }
+
+    @Test
+    void answersPurposeSumWithoutCallingItTotalProceeds() {
+        HcxPrompt prompt = hcxPromptFactory.create(
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 예정 자금 조달금액은 얼마인가?",
+                """
+                [근거 1]
+                공시명: 주요사항보고서(유상증자결정)
+                공시일: 2025-04-08
+                기업명: 한화에어로스페이스
+                근거: 4. 자금조달의 목적 > 시설자금 (원): 700,020,800,000원 (정규화 700020800000 KRW)
+
+                [근거 2]
+                공시명: 주요사항보고서(유상증자결정)
+                공시일: 2025-04-08
+                기업명: 한화에어로스페이스
+                근거: 4. 자금조달의 목적 > 타법인 증권취득자금 (원): 1,600,000,000,000원 (정규화 1600000000000 KRW)
+                """,
+                "기업명=한화에어로스페이스, 공시유형=major, 서식=유상증자결정, 공시일=2025-04-08 검색"
+                        + " → 문서 major_20250408000012 선택"
+                        + " → 자금 사용 목적 합계 fundraising_purpose_facility=700,020,800,000원"
+                        + " + fundraising_purpose_securities_acquisition=1,600,000,000,000원"
+                        + " = 2300020800000원 (2조 3,000억원)");
+        HcxResult result = hcxClient.generate(prompt);
+
+        assertThat(result.content()).isNotBlank();
+        System.out.println("[HCX] 예정 자금 조달금액\n" + result.content() + "\n");
+        String squashed = result.content().replaceAll("\\s", "");
+        // 실제 요약은 '2300020800000원 (2조 3,000억원)'이다. 모델이 괄호 쪽을 따라 23,000억으로 쓰기도 한다.
+        assertThat(squashed).containsAnyOf(
+                "2.3조", "2조3천", "2조3,000억", "2조3000억", "23,000억", "23000억",
+                "2,300,020,800,000", "2300020800000");
+        assertThat(result.content()).contains("자금 사용 목적 합계");
+    }
 }

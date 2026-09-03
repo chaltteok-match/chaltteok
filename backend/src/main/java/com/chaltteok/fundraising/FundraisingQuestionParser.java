@@ -8,9 +8,10 @@ import java.util.Map;
 /**
  * 질문에서 기업·목적·총액 여부를 읽는다.
  *
- * <p>{@code 총액}·{@code 총 조달금액}·{@code 합계}가 있으면 목적 표현보다 총액(목적 합계)을
- * 우선한다. {@code 시설자금을 포함한 총 조달금액}처럼 목적이 끼어도 총액 질문이다.
- * 그런 말이 없고 목적 표현만 있으면 그 목적만 본다.
+ * <p>{@code 총액}·{@code 총 조달금액}·{@code 합계}가 있으면 합계 질문으로 본다.
+ * 다만 목적 표현 바로 뒤에 마커가 붙으면({@code 시설자금 총액}, {@code 시설자금 합계})
+ * 그 목적만 본다. {@code 시설자금을 포함한 총 조달금액}처럼 목적과 마커 사이에
+ * 다른 말이 끼면 합계다.
  */
 final class FundraisingQuestionParser {
 
@@ -45,6 +46,11 @@ final class FundraisingQuestionParser {
     static FundraisingQuestion parse(String question, List<String> knownCorpNames) {
         String text = question == null ? "" : question;
         String corpName = longestMatch(text, knownCorpNames);
+        String purposeAttachedToMarker = purposeImmediatelyFollowedByTotalMarker(text);
+        if (purposeAttachedToMarker != null) {
+            return new FundraisingQuestion(
+                    corpName, PURPOSE_KEYWORDS.get(purposeAttachedToMarker), purposeAttachedToMarker);
+        }
         if (asksForTotal(text)) {
             return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
         }
@@ -56,6 +62,30 @@ final class FundraisingQuestionParser {
             return new FundraisingQuestion(corpName, PURPOSE_KEYWORDS.get(purpose), purpose);
         }
         return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+    }
+
+    private static String purposeImmediatelyFollowedByTotalMarker(String text) {
+        for (String purpose : PURPOSE_KEYWORDS.keySet()) {
+            int index = text.indexOf(purpose);
+            if (index < 0) {
+                continue;
+            }
+            int after = skipWhitespace(text, index + purpose.length());
+            for (String marker : TOTAL_MARKERS) {
+                if (text.startsWith(marker, after)) {
+                    return purpose;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static int skipWhitespace(String text, int start) {
+        int index = start;
+        while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+            index++;
+        }
+        return index;
     }
 
     private static boolean asksForTotal(String text) {

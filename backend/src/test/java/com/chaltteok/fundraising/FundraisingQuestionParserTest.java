@@ -43,7 +43,7 @@ class FundraisingQuestionParserTest {
     }
 
     @Test
-    void prefersTotalWhenTotalMarkerAppearsWithPurpose() {
+    void prefersTotalWhenWordsSitBetweenPurposeAndMarker() {
         FundraisingQuestion included = FundraisingQuestionParser.parse(
                 "한화에어로스페이스 유상증자의 시설자금을 포함한 총 조달금액은?", CORPS);
         assertThat(included.isTotal()).isTrue();
@@ -51,6 +51,17 @@ class FundraisingQuestionParserTest {
         FundraisingQuestion excluded = FundraisingQuestionParser.parse(
                 "한화에어로스페이스 유상증자의 타법인 증권취득자금을 제외한 총액은?", CORPS);
         assertThat(excluded.isTotal()).isTrue();
+    }
+
+    @Test
+    void treatsMarkerRightAfterPurposeAsThatPurpose() {
+        FundraisingQuestion facilityTotal = FundraisingQuestionParser.parse("시설자금 총액은?", CORPS);
+        assertThat(facilityTotal.isTotal()).isFalse();
+        assertThat(facilityTotal.factKey()).isEqualTo(FundraisingAnswerHandler.FACILITY_FACT_KEY);
+
+        FundraisingQuestion facilitySum = FundraisingQuestionParser.parse("시설자금 합계는?", CORPS);
+        assertThat(facilitySum.isTotal()).isFalse();
+        assertThat(facilitySum.factKey()).isEqualTo(FundraisingAnswerHandler.FACILITY_FACT_KEY);
     }
 
     @Test

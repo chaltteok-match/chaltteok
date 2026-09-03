@@ -40,6 +40,7 @@ class HcxPromptFactoryTest {
                 .contains("1,600,000,000,000")
                 .contains("특정 자금조달 목적 금액이면 그 목적을 답변에 명시")
                 .contains("총 조달금액이라고 쓰지 마세요")
-                .contains("자금 사용 목적 합계가 있으면 그 합을 자금 사용 목적 합계로 답");
+                .contains("그 값이 자금 사용 목적 합계임을 괄호로 덧붙이세요")
+                .contains("예정 자금 조달금액(자금 사용 목적 합계)");
     }
 }

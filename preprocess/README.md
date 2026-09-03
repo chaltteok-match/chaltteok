@@ -46,6 +46,8 @@ Python 공통 출력 모델은 [`docs/data-model.md`](../docs/data-model.md)의 
 
 유상증자결정 ACODE·목적별 `fact_key` 근거는 [`docs/architecture/paid-in-capital-acodes.md`](../docs/architecture/paid-in-capital-acodes.md)를 따릅니다. `ANC_ACQ_AMT`는 총 조달금액이 아닙니다.
 
+거래소공시 원문은 확장자가 `.xml`이지만 실제로는 HTML이고 `ACODE`가 없어, DART XML 파서를 재사용하지 않고 별도 모듈로 둡니다. 서식·라벨 식별 근거는 [`docs/architecture/exchange-parsing.md`](../docs/architecture/exchange-parsing.md)를 따릅니다. charset 선언(`euc-kr`)과 달리 실제 바이트는 UTF-8입니다.
+
 ## 공통 출력 모델 사용
 
 네 공시 유형 파서는 모두 `chaltteok_etl.common.PreprocessResult`를 최종 출력 모델로 사용합니다. 모델 생성 시 문서 코드와 날짜, NFC 논리 경로, chunk·fact·relation 참조 관계를 검증합니다.

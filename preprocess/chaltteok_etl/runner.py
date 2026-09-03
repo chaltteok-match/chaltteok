@@ -24,6 +24,7 @@ from .common.manifest import (
     resolve_source_dir,
 )
 from .common.models import PreprocessResult
+from .exchange.krx_forms import parse_exchange_disclosure
 from .material.paid_in_capital import parse_paid_in_capital_increase
 from .periodic.summary_financials import (
     UnsupportedDocument,
@@ -39,6 +40,13 @@ def _parse_major(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessR
     document = build_document(manifest_row)
     source_xml = resolve_main_xml(resolve_source_dir(corpus_root, manifest_row), manifest_row)
     return parse_paid_in_capital_increase(source_xml, document)
+
+
+def _parse_exchange(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
+    """거래소공시 파서도 원문 경로와 문서를 직접 받는다. 원문은 HTML이다."""
+    document = build_document(manifest_row)
+    source_html = resolve_main_xml(resolve_source_dir(corpus_root, manifest_row), manifest_row)
+    return parse_exchange_disclosure(source_html, document)
 
 
 @dataclass(frozen=True)
@@ -64,7 +72,11 @@ PARSERS: dict[str, ParserEntry] = {
         # 유상증자결정 서식만 파서가 있다. 나머지 서식은 아직 대상이 아니다.
         supports=lambda row: resolve_doc_subtype(row) == "유상증자결정",
     ),
-    # "exchange": 거래소공시 파서가 생기면 여기 등록한다.
+    "exchange": ParserEntry(
+        parse=_parse_exchange,
+        # 서식 4종이 전부다. 모르는 서식은 건너뛰지 않고 실패로 드러낸다.
+        supports=lambda row: True,
+    ),
     # "holding": 지분공시 파서가 생기면 여기 등록한다.
 }
 

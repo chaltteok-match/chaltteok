@@ -32,8 +32,9 @@ import org.springframework.stereotype.Component;
  * 타법인 증권취득 목적 자금은 얼마인가?
  *
  * <p>기업명은 적재된 유상증자결정 문서에서 가져온다. 목적 6종은 질문이 가리키는
- * fact만 쓰고, 총액(예정 자금 조달금액 등)은 값이 있는 목적별 금액을 같은 문서에서
- * 합산한다. {@code ANC_ACQ_AMT}는 총 조달금액이 아니다.
+ * fact만 쓰고, 총액처럼 보이는 질문(예정 자금 조달금액 등)은 값이 있는 목적별 금액을
+ * 같은 문서에서 합산해 {@code 자금 사용 목적 합계}로 남긴다. 발행제비용 등으로
+ * 신주수×발행가액과 다를 수 있어 총 조달금액이라고 단정하지 않는다.
  *
  * <p>질문의 공시일({@code yyyy년 M월 d일})로 {@code rcept_dt}를 좁힌다.
  * 같은 날짜에 정정본이 있으면 원본은 대체된 것으로 보고 정정본만 남긴다.
@@ -268,7 +269,7 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                     .map(fact -> fact.getFactKey() + "=" + rawAmount(fact))
                     .collect(Collectors.joining(" + "));
             String total = sum().toPlainString();
-            return "문서 " + docId + " 선택 → 목적별 합산 " + parts + " = " + total
+            return "문서 " + docId + " 선택 → 자금 사용 목적 합계 " + parts + " = " + total
                     + "원 (" + KoreanAmountFormatter.format(total) + ")";
         }
 

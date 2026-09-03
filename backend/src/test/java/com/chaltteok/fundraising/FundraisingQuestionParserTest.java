@@ -39,7 +39,24 @@ class FundraisingQuestionParserTest {
 
         assertThat(parsed.isTotal()).isTrue();
         assertThat(parsed.factKey()).isNull();
-        assertThat(parsed.itemLabel()).isEqualTo("총액");
+        assertThat(parsed.itemLabel()).isEqualTo("자금 사용 목적 합계");
+    }
+
+    @Test
+    void prefersTotalWhenTotalMarkerAppearsWithPurpose() {
+        FundraisingQuestion included = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 시설자금을 포함한 총 조달금액은?", CORPS);
+        assertThat(included.isTotal()).isTrue();
+
+        FundraisingQuestion excluded = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 타법인 증권취득자금을 제외한 총액은?", CORPS);
+        assertThat(excluded.isTotal()).isTrue();
+    }
+
+    @Test
+    void treatsPlainFundraisingAmountQuestionAsTotal() {
+        FundraisingQuestion parsed = FundraisingQuestionParser.parse("유상증자 자금은 얼마인가?", CORPS);
+        assertThat(parsed.isTotal()).isTrue();
     }
 
     @Test

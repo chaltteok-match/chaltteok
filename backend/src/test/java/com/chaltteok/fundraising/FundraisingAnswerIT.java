@@ -162,7 +162,7 @@ class FundraisingAnswerIT {
                                 "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 예정 자금 조달금액은 얼마인가?"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.think_trace").value(allOf(
-                        containsString("목적별 합산"),
+                        containsString("자금 사용 목적 합계"),
                         containsString("700,020,800,000원"),
                         containsString("1,600,000,000,000원"),
                         containsString("2300020800000원")

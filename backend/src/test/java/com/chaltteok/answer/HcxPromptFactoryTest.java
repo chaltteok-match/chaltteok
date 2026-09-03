@@ -30,7 +30,9 @@ class HcxPromptFactoryTest {
         assertThat(prompt.systemPrompt())
                 .contains("타법인 증권취득자금")
                 .contains("총 조달금액이 아닙니다")
-                .contains("목적별 금액을 총 조달금액처럼 답하지 마세요");
+                .contains("목적별 금액을 총 조달금액처럼 답하지 마세요")
+                .contains("목적별 금액을 더한 값도")
+                .contains("총 조달금액이라고 쓰지 마세요");
         assertThat(prompt.userPrompt())
                 .contains(QUESTION)
                 .contains(PROCESS)
@@ -38,6 +40,6 @@ class HcxPromptFactoryTest {
                 .contains("1,600,000,000,000")
                 .contains("특정 자금조달 목적 금액이면 그 목적을 답변에 명시")
                 .contains("총 조달금액이라고 쓰지 마세요")
-                .contains("목적별 합산이 있으면 그 합을 총 조달금액으로 답");
+                .contains("자금 사용 목적 합계가 있으면 그 합을 자금 사용 목적 합계로 답");
     }
 }

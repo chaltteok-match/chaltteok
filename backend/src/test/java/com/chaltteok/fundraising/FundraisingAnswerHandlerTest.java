@@ -411,7 +411,7 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.isAnswerable()).isTrue();
         assertThat(result.evidences()).hasSize(2);
         assertThat(result.processSummary())
-                .contains("목적별 합산")
+                .contains("자금 사용 목적 합계")
                 .contains("700,020,800,000원")
                 .contains("1,600,000,000,000원")
                 .contains("2300020800000원")

@@ -8,8 +8,9 @@ import java.util.Map;
 /**
  * 질문에서 기업·목적·총액 여부를 읽는다.
  *
- * <p>목적 표현이 있으면 그 목적만 보고, 없으면 총액(목적별 합산)으로 본다.
- * {@code 타법인 증권취득 목적 자금}처럼 목적과 {@code 자금}이 같이 있어도 총액이 아니다.
+ * <p>{@code 총액}·{@code 총 조달금액}·{@code 합계}가 있으면 목적 표현보다 총액(목적 합계)을
+ * 우선한다. {@code 시설자금을 포함한 총 조달금액}처럼 목적이 끼어도 총액 질문이다.
+ * 그런 말이 없고 목적 표현만 있으면 그 목적만 본다.
  */
 final class FundraisingQuestionParser {
 
@@ -36,12 +37,17 @@ final class FundraisingQuestionParser {
                 .forEach(entry -> PURPOSE_KEYWORDS.put(entry.getKey(), entry.getValue()));
     }
 
+    private static final String[] TOTAL_MARKERS = {"총액", "총 조달", "합계"};
+
     private FundraisingQuestionParser() {
     }
 
     static FundraisingQuestion parse(String question, List<String> knownCorpNames) {
         String text = question == null ? "" : question;
         String corpName = longestMatch(text, knownCorpNames);
+        if (asksForTotal(text)) {
+            return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+        }
         String purpose = PURPOSE_KEYWORDS.keySet().stream()
                 .filter(text::contains)
                 .findFirst()
@@ -49,7 +55,16 @@ final class FundraisingQuestionParser {
         if (purpose != null) {
             return new FundraisingQuestion(corpName, PURPOSE_KEYWORDS.get(purpose), purpose);
         }
-        return new FundraisingQuestion(corpName, null, "총액");
+        return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+    }
+
+    private static boolean asksForTotal(String text) {
+        for (String marker : TOTAL_MARKERS) {
+            if (text.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String longestMatch(String text, List<String> candidates) {

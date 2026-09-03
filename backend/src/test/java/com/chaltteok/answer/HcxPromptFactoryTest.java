@@ -37,6 +37,7 @@ class HcxPromptFactoryTest {
                 .contains("타법인 증권취득자금")
                 .contains("1,600,000,000,000")
                 .contains("특정 자금조달 목적 금액이면 그 목적을 답변에 명시")
-                .contains("총 조달금액이라고 쓰지 마세요");
+                .contains("총 조달금액이라고 쓰지 마세요")
+                .contains("목적별 합산이 있으면 그 합을 총 조달금액으로 답");
     }
 }

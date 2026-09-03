@@ -151,6 +151,30 @@ class FundraisingAnswerIT {
     }
 
     @Test
+    void answersTotalProceedsAsSumOfPurposeAmounts() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "한화에어로스페이스 2025년 4월 8일 유상증자의 예정 자금 조달금액은 2조 3,000억원입니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-FUND-TOTAL")
+                        .param("question",
+                                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 예정 자금 조달금액은 얼마인가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(allOf(
+                        containsString("목적별 합산"),
+                        containsString("700,020,800,000원"),
+                        containsString("1,600,000,000,000원"),
+                        containsString("2300020800000원")
+                )))
+                .andExpect(jsonPath("$.retrieved_context").value(allOf(
+                        containsString("시설자금"),
+                        containsString("타법인 증권취득자금")
+                )))
+                .andExpect(jsonPath("$.answer").value(containsString("2조 3,000억원")));
+    }
+
+    @Test
     void returns503WhenHcxTimesOut() throws Exception {
         when(hcxClient.generate(any(HcxPrompt.class)))
                 .thenThrow(new HcxClientException(HcxErrorType.TIMEOUT, "read timed out"));

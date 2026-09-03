@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -40,6 +41,7 @@ import org.springframework.stereotype.Component;
  * 총액 합산은 별도 이슈 범위다. 근거: {@code docs/architecture/paid-in-capital-acodes.md}.
  */
 @Component
+@Order(20)
 @ConditionalOnProperty(name = "chaltteok.disclosure.persistence.enabled", havingValue = "true")
 public class FundraisingAnswerHandler implements AnswerHandler {
 

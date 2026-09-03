@@ -23,6 +23,17 @@ cd infra
 docker compose down -v && docker compose up -d
 ```
 
+한 공시 유형만 지우고 다시 적재할 때는 **자식 표부터** 지워야 합니다. 순서를 지키지 않으면 외래 키 제약에 걸립니다.
+
+```sql
+delete from disclosure_relation_evidence_chunk;
+delete from changed_field;
+delete from disclosure_relation;
+delete from extracted_fact where doc_id in (select doc_id from disclosure_document where doc_group = 'EXCHANGE');
+delete from evidence_chunk   where doc_id in (select doc_id from disclosure_document where doc_group = 'EXCHANGE');
+delete from disclosure_document where doc_group = 'EXCHANGE';
+```
+
 ```bash
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/result.jsonl'
@@ -61,6 +72,20 @@ cd backend
 적재 기능 자체(`JsonlDisclosureLoader`)는 `chaltteok.disclosure.persistence.enabled=true`이면
 프로필과 무관하게 빈으로 존재합니다. 다만 이를 호출하는 것은 위 러너뿐이므로,
 `load` 없이 실행하면 아무것도 적재되지 않습니다.
+
+## Handler 선택 순서
+
+`AnswerHandlerSelector`는 `supports()`가 참인 **첫 번째** Handler를 쓰므로 순서가 답을 바꿉니다.
+등록 순서에 좌우되지 않도록 `@Order`로 명시합니다.
+
+| 순서 | Handler | 공시 유형 |
+| --- | --- | --- |
+| 10 | `ExchangeAnswerHandler` | 거래소공시 |
+| 20 | `FundraisingAnswerHandler` | 주요사항보고서(유상증자결정) |
+| 30 | `FinancialAnswerHandler` | 정기공시 |
+
+서식을 특정하는 Handler를 앞에 둡니다. "공급계약금액이 최근 매출액 대비 몇 %인가" 같은 질문은
+'매출액'을 품고 있어 정기공시 Handler도 처리하겠다고 답하기 때문입니다.
 
 ## HyperCLOVA X 클라이언트
 

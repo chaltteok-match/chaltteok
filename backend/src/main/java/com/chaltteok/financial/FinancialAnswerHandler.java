@@ -2,6 +2,8 @@ package com.chaltteok.financial;
 
 import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.KoreanAmountFormatter;
+import com.chaltteok.answer.KoreanParticle;
 import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.model.enums.ExtractionStatus;
@@ -18,6 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 모두 문서 한 건으로 처리한다. 근거 조립까지만 하고 최종 문장은 HCX가 만든다.
  */
 @Component
+@Order(30)
 @ConditionalOnProperty(name = "chaltteok.disclosure.persistence.enabled", havingValue = "true")
 public class FinancialAnswerHandler implements AnswerHandler {
 
@@ -85,9 +89,10 @@ public class FinancialAnswerHandler implements AnswerHandler {
             String reason = onlyPartialPeriod
                     ? "'%s'에는 %d년 %s가 연간 수치가 아니라 일부 기간 누적으로만 있어 연간 값으로 답할 수 없습니다"
                             .formatted(document.getReportNm(), parsed.targetYear(), parsed.itemLabel())
-                    : "'%s'에서 %d년 %s기준 %s를 찾지 못했습니다".formatted(
+                    : "'%s'에서 %d년 %s기준 %s%s 찾지 못했습니다".formatted(
                             document.getReportNm(), parsed.targetYear(),
-                            scopeText(parsed.scope()), parsed.itemLabel());
+                            scopeText(parsed.scope()), parsed.itemLabel(),
+                            KoreanParticle.object(parsed.itemLabel()));
             return AnswerHandlerResult.unavailable(
                     searchSummary + (onlyPartialPeriod
                             ? " → 연간 수치 없음(일부 기간 누적만 존재)"
@@ -339,6 +344,7 @@ public class FinancialAnswerHandler implements AnswerHandler {
         if (parsed.factKey() == null) {
             missing.add("재무 항목");
         }
-        return "질문에서 " + String.join("·", missing) + "을(를) 식별하지 못했습니다";
+        String parts = String.join("·", missing);
+        return "질문에서 %s%s 식별하지 못했습니다".formatted(parts, KoreanParticle.object(parts));
     }
 }

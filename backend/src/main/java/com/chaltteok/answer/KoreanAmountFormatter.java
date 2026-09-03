@@ -1,4 +1,4 @@
-package com.chaltteok.financial;
+package com.chaltteok.answer;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -8,8 +8,10 @@ import java.text.DecimalFormat;
  * 원 단위 정규화 값을 사람이 읽는 표기로 바꾼다. 예: {@code 300870903000000} → {@code 300조 8,709억원}.
  *
  * <p>표기는 읽기 위한 것이고, 검증에 쓰는 값은 언제나 정규화 원본이다.
+ *
+ * <p>공시 유형과 무관하게 원 단위 금액을 다루는 Handler가 함께 쓴다.
  */
-final class KoreanAmountFormatter {
+public final class KoreanAmountFormatter {
 
     private static final BigDecimal JO = new BigDecimal("1000000000000");
     private static final BigDecimal EOK = new BigDecimal("100000000");
@@ -17,7 +19,7 @@ final class KoreanAmountFormatter {
     private KoreanAmountFormatter() {
     }
 
-    static String format(String normalizedKrw) {
+    public static String format(String normalizedKrw) {
         BigDecimal value = new BigDecimal(normalizedKrw);
         String sign = value.signum() < 0 ? "-" : "";
         value = value.abs();

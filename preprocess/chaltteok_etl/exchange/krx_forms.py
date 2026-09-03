@@ -37,7 +37,7 @@ from chaltteok_etl.common import (
 )
 
 SCHEMA_VERSION = "0.2"
-PARSER_VERSION = "0.1.0"
+PARSER_VERSION = "0.2.0"
 
 # 값 셀을 표시하는 클래스. 서식 4종 1,469건 전부 이 클래스로 값을 감싼다.
 VALUE_CLASS = "xforms_input"
@@ -99,6 +99,15 @@ def _text(fact_key: str) -> _FieldSpec:
 #   계약상대 / 계약상대방          — 조건부 계약 서식 26건
 #   계약금액(원) / 계약금액총액(원)  — 조건부 계약 서식은 총액 행이 대응한다
 #   계약(수주)일자 / 계약(수주)일    — 각 1,022건 / 58건
+# 정정본이 공통으로 갖는 머리 항목. 서식과 무관하게 같은 라벨을 쓴다.
+# `2. 정정관련 공시서류제출일`이 원본의 접수일을 가리켜 정정 이력을 잇는 열쇠가 된다.
+_CORRECTION_FIELDS: dict[str, _FieldSpec] = {
+    "정정일자": _date("correction_date"),
+    "정정관련공시서류": _text("correction_target_form"),
+    "정정관련공시서류제출일": _date("correction_target_filing_date"),
+    "정정사유": _text("correction_reason"),
+}
+
 _SUPPLY_CONTRACT: dict[str, _FieldSpec] = {
     "판매ㆍ공급계약구분": _text("contract_type"),
     "판매ㆍ공급계약내용": _text("contract_name"),
@@ -159,11 +168,12 @@ class _FormSpec:
 # report_nm에서 [기재정정] 접두와 괄호 부제를 뗀 이름이 서식이다.
 # 136종으로 보이는 report_nm은 접두와 부제 때문이며 실제 서식은 이 4종뿐이다.
 FORMS: tuple[_FormSpec, ...] = (
-    _FormSpec("단일판매ㆍ공급계약체결", _SUPPLY_CONTRACT),
-    _FormSpec("단일판매ㆍ공급계약해지", _SUPPLY_TERMINATION),
-    _FormSpec("신규시설투자등", _FACILITY_INVESTMENT),
-    # 제목과 주요내용이 자유 서술이라 사실을 만들지 않는다.
-    _FormSpec("투자판단관련주요경영사항", {}),
+    _FormSpec("단일판매ㆍ공급계약체결", _CORRECTION_FIELDS | _SUPPLY_CONTRACT),
+    _FormSpec("단일판매ㆍ공급계약해지", _CORRECTION_FIELDS | _SUPPLY_TERMINATION),
+    _FormSpec("신규시설투자등", _CORRECTION_FIELDS | _FACILITY_INVESTMENT),
+    # 제목과 주요내용이 자유 서술이라 본문에서는 사실을 만들지 않는다.
+    # 정정 머리 항목은 자유 서술이 아니라 정형이라 이력을 잇기 위해 뽑는다.
+    _FormSpec("투자판단관련주요경영사항", _CORRECTION_FIELDS),
 )
 
 _CORRECTION_PREFIX = re.compile(r"^\[[^\]]+\]")

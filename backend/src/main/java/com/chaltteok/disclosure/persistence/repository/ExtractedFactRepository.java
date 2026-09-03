@@ -29,4 +29,21 @@ public interface ExtractedFactRepository extends JpaRepository<ExtractedFactEnti
             @Param("docId") String docId,
             @Param("factKey") String factKey,
             @Param("scope") Scope scope);
+
+    /**
+     * 여러 문서에서 같은 항목을 한 번에 읽는다.
+     *
+     * <p>거래소공시처럼 문서 한 건이 사건 한 건인 유형은, 최댓값을 찾거나 기간을 훑을 때
+     * 문서 수만큼 조회하면 질의가 수백 번 나간다.
+     */
+    @Query("""
+            select f from ExtractedFactEntity f
+            join fetch f.evidenceChunk
+            join fetch f.document
+            where f.document.docId in :docIds
+              and f.factKey = :factKey
+            """)
+    List<ExtractedFactEntity> findForAnswerByDocIds(
+            @Param("docIds") List<String> docIds,
+            @Param("factKey") String factKey);
 }

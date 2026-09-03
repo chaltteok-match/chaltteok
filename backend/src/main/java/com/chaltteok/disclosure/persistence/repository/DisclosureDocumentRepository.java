@@ -46,6 +46,19 @@ public interface DisclosureDocumentRepository extends JpaRepository<DisclosureDo
             String corpName, DocGroup docGroup, Integer baseYear, Integer baseMonth);
 
     /**
+     * 기업의 거래소공시를 접수일 역순으로 찾는다.
+     *
+     * <p>거래소공시는 사건 공시라 기준연도가 없고, 한 기업이 같은 서식을 수백 건 낸다
+     * (대우건설 104건). 어느 문서를 쓸지는 호출하는 쪽이 질문의 공시일로 좁힌다.
+     */
+    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(
+            String corpName, DocGroup docGroup);
+
+    /** 같은 날 여러 건이 접수될 수 있어 목록으로 돌려준다. */
+    List<DisclosureDocumentEntity> findByCorpNameAndDocGroupAndRceptDtOrderByRceptNoDesc(
+            String corpName, DocGroup docGroup, LocalDate rceptDt);
+
+    /**
      * 질문에서 기업명을 식별하기 위한 후보 목록.
      * 코퍼스의 법인명을 코드에 하드코딩하지 않기 위해 적재된 값에서 가져온다.
      */

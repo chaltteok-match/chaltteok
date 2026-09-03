@@ -77,19 +77,25 @@ class ExchangeAnswerHandlerIT {
 
         // 대우건설 2023-03-10 — 리비아 계약 원본.
         persistenceService.save(daewooContract("20230310800034", LocalDate.of(2023, 3, 10), false,
-                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000", null));
+                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000", "리비아 전력청"));
         // 같은 날 접수된 별개 계약. 아래 정정본과 아무 관계가 없다.
         persistenceService.save(daewooContract("20230630800613", LocalDate.of(2023, 6, 30), false,
-                "단일판매ㆍ공급계약체결", "400,119,500,000", "400119500000", null));
+                "단일판매ㆍ공급계약체결", "400,119,500,000", "400119500000", "국내 발주처"));
         // 2023-03-10 계약의 정정본. 접수일은 6월 30일이지만 고친 대상은 3월 10일 공시다.
         persistenceService.save(daewooCorrection("20230630800615", LocalDate.of(2023, 6, 30),
                 "1,046,363,500,000", "1046363500000", LocalDate.of(2023, 3, 10),
                 "exchange_20230310800034"));
         // 다른 해의 더 큰 계약. 최댓값 질문이 연도를 지키는지 본다.
         persistenceService.save(daewooContract("20240628800100", LocalDate.of(2024, 6, 28), false,
-                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000", null));
+                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000", "사우디 발주처"));
         persistenceService.save(daewooContract("20240115800200", LocalDate.of(2024, 1, 15), false,
-                "단일판매ㆍ공급계약체결", "1,006,253,000,000", "1006253000000", null));
+                "단일판매ㆍ공급계약체결", "1,006,253,000,000", "1006253000000", "베트남 발주처"));
+
+        // 같은 날 접수된 서로 다른 계약 2건. 날짜로 좁혀도 갈리는 경우다.
+        persistenceService.save(daewooContract("20240228800300", LocalDate.of(2024, 2, 28), false,
+                "단일판매ㆍ공급계약체결", "500,000,000,000", "500000000000", "국내 발주처 A"));
+        persistenceService.save(daewooContract("20240228800400", LocalDate.of(2024, 2, 28), false,
+                "단일판매ㆍ공급계약체결", "700,000,000,000", "700000000000", "국내 발주처 B"));
 
         // HMM 20230214 — 신규시설투자등.
         persistenceService.save(hmmInvestment());
@@ -123,7 +129,8 @@ class ExchangeAnswerHandlerIT {
 
         assertThat(result.isAnswerable()).isTrue();
         assertThat(result.processSummary()).contains("4,001억원").doesNotContain("1조 463억원");
-        assertThat(result.evidences()).hasSize(1);
+        // 계약금액과 계약상대를 함께 근거로 남긴다.
+        assertThat(result.evidences()).hasSize(2);
         assertThat(result.evidences().get(0).reportName()).doesNotStartWith("[기재정정]");
     }
 
@@ -154,15 +161,35 @@ class ExchangeAnswerHandlerIT {
     }
 
     @Test
-    void refusesToPickOneWhenSeveralContractsHaveDifferentAmounts() {
-        // 어느 계약을 묻는지 모르는 채 최신 건을 답하면 틀린 계약의 금액을 확신 있게 말하게 된다.
+    void answersWithTheLatestDisclosureWhenNoDateIsGiven() {
+        // 공시일이 없으면 최신 한 건으로 답하되, 어느 계약인지 근거로 드러낸다.
         AnswerHandlerResult result = answer("대우건설의 공급계약 계약금액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("최신 공시 사용")
+                .contains("2024-06-28")
+                .contains("사우디 발주처")
+                .contains("1조 463억원");
+        // 값과 함께 계약상대를 근거로 남겨야 어느 계약을 답한 것인지 알 수 있다.
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.evidences()).anyMatch(evidence ->
+                evidence.evidenceText().contains("사우디 발주처"));
+    }
+
+    @Test
+    void refusesWhenTheGivenDateStillHasSeveralContracts() {
+        // 질문이 이미 날짜로 좁혔는데도 갈리면 더 좁힐 정보를 물어야 한다.
+        AnswerHandlerResult result =
+                answer("대우건설이 2024년 2월 28일 공시한 공급계약의 계약금액은 얼마인가?");
 
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason())
-                // 조사를 고정하면 '계약금액가'가 된다.
+                // 조사를 고정하면 '대우건설가'·'계약금액가'가 된다.
+                .contains("대우건설이")
+                .contains("단일판매ㆍ공급계약체결이")
                 .contains("계약금액이 서로 달라")
-                .contains("2024-06-28");
+                .contains("2024-02-28");
         // 특정하지 못해도 찾은 근거는 남긴다.
         assertThat(result.evidences()).isNotEmpty();
     }
@@ -240,12 +267,16 @@ class ExchangeAnswerHandlerIT {
 
     private static PreprocessResult daewooContract(
             String rceptNo, LocalDate rceptDt, boolean correction,
-            String reportNm, String rawAmount, String normalizedAmount, String unused) {
+            String reportNm, String rawAmount, String normalizedAmount, String counterparty) {
         Fixture fixture = new Fixture("exchange_" + rceptNo);
         fixture.document = document("exchange_" + rceptNo, "대우건설", "00164839", "047040",
                 reportNm, rceptNo, rceptDt, correction);
         fixture.row("2. 계약내역", "계약금액(원)", "contract_amount",
                 rawAmount, normalizedAmount, "원", "KRW", rceptDt);
+        if (counterparty != null) {
+            fixture.row(null, "3. 계약상대", "contract_counterparty",
+                    counterparty, null, null, null, rceptDt, ValueType.TEXT);
+        }
         return fixture.build();
     }
 

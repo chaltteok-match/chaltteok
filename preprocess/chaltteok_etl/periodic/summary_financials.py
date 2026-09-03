@@ -46,14 +46,30 @@ RE_PERIOD_NO = re.compile(r"제\s*(\d+)\s*기")
 RE_YEAR = re.compile(r"(?:19|20)\d{2}")
 # 표기 흔들림 흡수: (단위 : 백만원) (단위:백만원) (단위: 백만원)
 RE_UNIT = re.compile(r"\(\s*단위\s*[:：]?\s*([^)<]{1,20}?)\s*\)")
-# 소제목 어순이 두 가지다: '가. 요약연결재무정보' / '1) 연결 요약재무정보'
+# 소제목 번호. '가.' '나)' '(1)' '1.' 처럼 붙는다. 본문 속 같은 낱말과 가르는 앵커다.
+# 소제목 블록의 최대 길이. 이보다 길면 본문으로 본다.
+_HEADING_MAX_CHARS = 40
+_NUMBERING = r"(?:[(（]\s*)?(?:[가-힣]|\d{1,2})\s*[.)）]\s*"
+
+# 소제목이 쓰는 말이 여럿이다. 어순 두 가지에 '재무정보'와 '재무제표'가 섞인다.
+#   '가. 요약연결재무정보'  '가. 요약연결재무제표'
+#   '1) 연결 요약재무정보'  '가. 연결 요약재무제표'
+#   '(1) 요약재무정보(연결재무제표 기준)'  ← 기준을 괄호 안에 적는다
+#   '가. (연결)요약재무정보'  '가. 요약재무정보 ( 연결 )'  ← 기준을 괄호로 떼어 적는다
+#   '가. 연결재무제표'  ← '요약'이 아예 없다. 소제목 번호를 앵커로 삼아 본문과 가른다
 RE_SCOPE_MARKER = re.compile(
-    r"요약\s*(?P<after>연결|별도|개별)\s*재무\s*정보"
-    r"|(?P<before>연결|별도|개별)\s*요약\s*재무\s*정보"
+    r"요약\s*재무\s*(?:정보|제표)\s*[(（]\s*(?P<inside>연결|별도|개별)\s*(?:재무\s*제표)?\s*[)）기]"
+    r"|[(（]\s*(?P<paren>연결|별도|개별)\s*[)）]\s*요약\s*재무\s*(?:정보|제표)"
+    r"|요약\s*(?P<after>연결|별도|개별)\s*재무\s*(?:정보|제표|상태표)"
+    r"|(?P<before>연결|별도|개별)\s*요약\s*재무\s*(?:정보|제표|상태표)"
+    r"|" + _NUMBERING + r"(?P<bare>연결|별도|개별)\s*재무\s*제표"
 )
-# 기준을 밝히지 않은 요약재무정보 소제목: '나. 요약 재무정보'
+# 기준을 밝히지 않은 소제목: '나. 요약 재무정보', '나. 재무제표에 관한 사항'
 # 앞 소제목이 '가. 요약 연결 재무정보'였다고 해서 이 표까지 연결로 볼 수 없다.
-RE_SUMMARY_HEADING = re.compile(r"요약\s*재무\s*정보")
+RE_SUMMARY_HEADING = re.compile(
+    r"요약\s*재무\s*(?:정보|제표)"
+    r"|" + _NUMBERING + r"재무\s*제표"
+)
 # 소제목 없이 표 머리글에 기준을 적는 문서가 있다: '제44기 1분기말(연결)'
 RE_SCOPE_IN_HEADER = re.compile(r"[(（]\s*(연결|별도|개별)\s*[)）]")
 # 라벨 앞의 번호·로마자 접두 제거: '2.당기순이익', 'I.영업수익'
@@ -271,7 +287,7 @@ def _heading_text(section: str, position: int, fallback: str) -> str:
     block_end = section.find("</P>", position)
     if block_start != -1 and block_end != -1:
         candidate = dart_xml.clean(section[block_start:block_end])
-        if candidate and len(candidate) <= 40:
+        if candidate and len(candidate) <= _HEADING_MAX_CHARS:
             return candidate
     return fallback
 
@@ -286,7 +302,9 @@ def _scope_spans(section: str) -> list[tuple[int, Scope, str]]:
     spans: list[tuple[int, Scope, str]] = []
     covered: list[tuple[int, int]] = []
     for match in RE_SCOPE_MARKER.finditer(section):
-        scope = SCOPE_BY_MARKER[match.group("after") or match.group("before")]
+        scope = SCOPE_BY_MARKER[
+            match.group("inside") or match.group("paren")
+            or match.group("after") or match.group("before") or match.group("bare")]
         spans.append((match.start(), scope, _heading_text(section, match.start(), match.group(0))))
         covered.append((match.start(), match.end()))
 

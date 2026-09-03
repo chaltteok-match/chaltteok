@@ -295,6 +295,96 @@ def test_소제목_어순이_반대여도_인식한다(tmp_path):
     assert scopes[(Scope.SEPARATE, 2024)] == "500"
 
 
+def test_소제목이_재무제표라고_써도_인식한다(tmp_path):
+    """현대건설·엘에스일렉트릭은 '재무정보'가 아니라 '재무제표'라고 쓴다."""
+    body = (
+        "<P>가. 연결 요약재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>나. 별도 요약재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_기준을_괄호_안에_적어도_인식한다(tmp_path):
+    """현대자동차는 '(1) 요약재무정보(연결재무제표 기준)'처럼 괄호 안에 적는다."""
+    body = (
+        "<P>(1) 요약재무정보(연결재무제표 기준)</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>(2) 요약재무정보(별도재무제표 기준)</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_기준을_괄호로_앞뒤에_떼어_적어도_인식한다(tmp_path):
+    """세아베스틸지주는 '(연결)요약재무정보', 한전기술은 '요약재무정보 ( 연결 )'로 쓴다."""
+    body = (
+        "<P>가. (연결)요약재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>나 . 요약재무정보 ( 별도 )</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_요약이_없는_소제목도_번호가_붙으면_인식한다(tmp_path):
+    """현대제철은 '가. 연결재무제표'라고만 쓴다. 번호를 앵커로 삼는다."""
+    body = (
+        "<P>가. 연결재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>나. 별도재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_본문_속_재무제표_언급을_소제목으로_보지_않는다(tmp_path):
+    """'당사는 연결재무제표를 작성합니다'는 소제목이 아니다. 번호가 앞에 없다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>당사는 별도재무제표를 함께 작성하고 있습니다.</P>"
+        + summary_table(rows=(row_xml("영업이익", "100", "90", "80"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {fact.scope for fact in facts_by_key(result, "operating_profit")}
+    assert scopes == {Scope.CONSOLIDATED}
+
+
 def test_기준을_밝히지_않은_소제목은_앞_기준을_물려받지_않는다(tmp_path):
     """카카오처럼 '가. 요약 연결 재무정보' 다음에 '나. 요약 재무정보'가 오는 문서가 있다.
 

@@ -335,7 +335,7 @@ public class FinancialAnswerHandler implements AnswerHandler {
 
     private FinancialQuestion parse(String question) {
         return FinancialQuestionParser.parse(
-                question, CorpNameResolver.of(corpIdentityRepository.findAllIdentities()));
+                question, CorpNameResolver.of(corpIdentityRepository.findByDocGroup(DocGroup.PERIODIC)));
     }
 
     private static String missingPartsOf(FinancialQuestion parsed) {

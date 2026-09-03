@@ -509,7 +509,7 @@ public class ExchangeAnswerHandler implements AnswerHandler {
 
     private ExchangeQuestion parse(String question) {
         return ExchangeQuestionParser.parse(
-                question, CorpNameResolver.of(corpIdentityRepository.findAllIdentities()));
+                question, CorpNameResolver.of(corpIdentityRepository.findByDocGroup(DocGroup.EXCHANGE)));
     }
 
     private static String missingPartsOf(ExchangeQuestion parsed) {

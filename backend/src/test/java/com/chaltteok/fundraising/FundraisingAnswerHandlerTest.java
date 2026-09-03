@@ -11,9 +11,11 @@ import static org.mockito.Mockito.when;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.RetrievedContextFormatter;
 import com.chaltteok.answer.RetrievedEvidence;
+import com.chaltteok.answer.CorpIdentity;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import java.time.LocalDate;
@@ -44,14 +46,19 @@ class FundraisingAnswerHandlerTest {
     @Mock
     private ExtractedFactRepository factRepository;
 
+    @Mock
+    private CorpIdentityRepository corpIdentityRepository;
+
     private FundraisingAnswerHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new FundraisingAnswerHandler(documentRepository, factRepository);
-        when(documentRepository.findDistinctCorpNamesByDocGroupAndDocSubtype(
-                DocGroup.MAJOR, "유상증자결정"))
-                .thenReturn(List.of("한화에어로스페이스", "삼성SDI"));
+        handler = new FundraisingAnswerHandler(
+                documentRepository, factRepository, corpIdentityRepository);
+        when(corpIdentityRepository.findByDocGroupAndDocSubtype(DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(
+                        new CorpIdentity("한화에어로스페이스", "한화에어로스페이스", "012450", "00164645"),
+                        new CorpIdentity("삼성SDI", "삼성SDI", "006400", "00126362")));
     }
 
     @Test

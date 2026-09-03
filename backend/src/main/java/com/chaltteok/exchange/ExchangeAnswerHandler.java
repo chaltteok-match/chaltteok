@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -65,8 +66,16 @@ public class ExchangeAnswerHandler implements AnswerHandler {
 
     private static final String CORRECTION_PREFIX = "[기재정정]";
 
-    /** 답변 불가 사유에 나열할 공시일 최대 건수. */
-    private static final int MAX_LISTED_DATES = 5;
+    /**
+     * 어느 계약·투자인지 밝히는 항목.
+     *
+     * <p>공시일 없이 최신 한 건으로 답할 때, 값만 내면 어느 계약인지 알 수 없다.
+     * 공시일과 함께 이 항목을 근거에 남긴다.
+     */
+    private static final Map<ExchangeTopic, String> SUBJECT_FACT_KEYS = Map.of(
+            ExchangeTopic.SUPPLY_CONTRACT, "contract_counterparty",
+            ExchangeTopic.SUPPLY_TERMINATION, "termination_counterparty",
+            ExchangeTopic.FACILITY_INVESTMENT, "investment_target");
 
     /** 정정본이 가리키는 원본의 접수일. 이 값이 그 계약이 처음 공시된 날이다. */
     private static final String TARGET_FILING_DATE_KEY = "correction_target_filing_date";
@@ -366,41 +375,83 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         if (distinctValues.size() > 1) {
-            String item = parsed.itemLabel();
-            String particle = KoreanParticle.subject(item);
-            return AnswerHandlerResult.unavailable(
-                    partialEvidences(facts),
-                    searchSummary + " → 후보 %d건의 %s%s 서로 달라 한 건으로 좁히지 못함".formatted(
-                            facts.size(), item, particle),
-                    "%s의 %s 공시가 여러 건이고 %s%s 서로 달라 어느 계약인지 특정할 수 없습니다. 공시일을 지정해 주세요 (%s)"
-                            .formatted(parsed.corpName(), FORM_NAMES.get(parsed.topic()),
-                                    item, particle, recentDates(facts)));
+            return parsed.reportDate() == null
+                    ? latest(parsed, facts, searchSummary)
+                    : ambiguous(parsed, facts, searchSummary);
         }
-
-        ExtractedFactEntity fact = facts.get(0);
-        String summary = searchSummary + " → '%s'(%s)에서 %s %s 확인".formatted(
-                fact.getDocument().getReportNm(),
-                fact.getDocument().getRceptDt(),
-                parsed.itemLabel(),
-                display(fact));
-        return AnswerHandlerResult.of(List.of(evidenceOf(fact)), summary);
+        return answerWith(parsed, facts.get(0), facts.size(), searchSummary);
     }
 
     /**
-     * 안내할 공시일. 최근 것부터 몇 건만 든다.
+     * 공시일을 지정하지 않은 질문은 최신 한 건으로 답한다.
      *
-     * <p>대우건설은 공급계약 공시가 104건이라 전부 나열하면 사유를 읽을 수 없다.
+     * <p>어느 계약인지 밝히지 않고 값만 내면 틀린 계약의 금액을 확신 있게 말하게 되므로,
+     * 공시일과 계약상대를 근거에 함께 남겨 어느 계약을 답한 것인지 드러낸다.
      */
-    private static String recentDates(List<ExtractedFactEntity> facts) {
-        List<String> dates = facts.stream()
-                .map(fact -> fact.getDocument().getRceptDt().toString())
-                .distinct()
-                .sorted(Comparator.reverseOrder())
-                .toList();
-        String shown = String.join(", ", dates.subList(0, Math.min(MAX_LISTED_DATES, dates.size())));
-        return dates.size() <= MAX_LISTED_DATES
-                ? "예: " + shown
-                : "총 %d건, 최근 공시일 %s 등".formatted(dates.size(), shown);
+    private AnswerHandlerResult latest(
+            ExchangeQuestion parsed, List<ExtractedFactEntity> facts, String searchSummary) {
+        ExtractedFactEntity newest = facts.stream()
+                .max(Comparator
+                        .comparing((ExtractedFactEntity fact) -> fact.getDocument().getRceptDt())
+                        .thenComparing(fact -> fact.getDocument().getRceptNo()))
+                .orElseThrow();
+        return answerWith(parsed, newest, facts.size(), searchSummary);
+    }
+
+    /**
+     * 공시일을 지정했는데도 값이 갈리면 답하지 않는다.
+     *
+     * <p>그날 서로 다른 계약이 여러 건 접수된 경우다. 질문이 이미 날짜로 좁혔는데도
+     * 하나로 줄지 않으므로, 더 좁힐 정보를 물어야 한다.
+     */
+    private AnswerHandlerResult ambiguous(
+            ExchangeQuestion parsed, List<ExtractedFactEntity> facts, String searchSummary) {
+        String item = parsed.itemLabel();
+        String formName = FORM_NAMES.get(parsed.topic());
+        return AnswerHandlerResult.unavailable(
+                partialEvidences(facts),
+                searchSummary + " → %s 공시 %d건의 %s%s 서로 달라 한 건으로 좁히지 못함".formatted(
+                        parsed.reportDate(), facts.size(), item, KoreanParticle.subject(item)),
+                "%s%s %s에 공시한 %s%s 여러 건이고 %s%s 서로 달라 어느 계약인지 특정할 수 없습니다"
+                        .formatted(parsed.corpName(), KoreanParticle.subject(parsed.corpName()),
+                                parsed.reportDate(),
+                                formName, KoreanParticle.subject(formName),
+                                item, KoreanParticle.subject(item)));
+    }
+
+    /** 고른 한 건으로 답한다. 어느 계약인지 밝히는 항목이 있으면 근거에 함께 남긴다. */
+    private AnswerHandlerResult answerWith(
+            ExchangeQuestion parsed,
+            ExtractedFactEntity fact,
+            int candidateCount,
+            String searchSummary) {
+        DisclosureDocumentEntity document = fact.getDocument();
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        evidences.add(evidenceOf(fact));
+
+        Optional<ExtractedFactEntity> subject = subjectFact(parsed, document.getDocId());
+        subject.map(ExchangeAnswerHandler::evidenceOf)
+                .filter(evidence -> !evidences.contains(evidence))
+                .ifPresent(evidences::add);
+
+        StringBuilder summary = new StringBuilder(searchSummary);
+        if (candidateCount > 1) {
+            summary.append(" → 후보 %d건 중 최신 공시 사용".formatted(candidateCount));
+        }
+        summary.append(" → '%s'(%s)".formatted(document.getReportNm(), document.getRceptDt()));
+        subject.ifPresent(item ->
+                summary.append(", %s %s".formatted(item.getLabel(), item.getRawValue())));
+        summary.append("에서 %s %s 확인".formatted(parsed.itemLabel(), display(fact)));
+        return AnswerHandlerResult.of(evidences, summary.toString());
+    }
+
+    /** 어느 계약인지 밝히는 항목. 서식에 없거나 값이 비면 비어 있다. */
+    private Optional<ExtractedFactEntity> subjectFact(ExchangeQuestion parsed, String docId) {
+        String subjectKey = SUBJECT_FACT_KEYS.get(parsed.topic());
+        if (subjectKey == null || subjectKey.equals(parsed.factKey())) {
+            return Optional.empty();
+        }
+        return factRepository.findForAnswerByDocIds(List.of(docId), subjectKey).stream().findFirst();
     }
 
     /** 정규화 값이 없는 텍스트 항목은 원문 값으로 비교한다. */

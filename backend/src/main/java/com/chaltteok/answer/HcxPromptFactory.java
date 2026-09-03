@@ -5,7 +5,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * 검색 근거를 포함한 HyperCLOVA X 프롬프트를 만든다.
- * 목적별 자금(타법인 증권취득자금 등)을 총 조달금액으로 오인하지 않도록 지시를 포함한다.
+ *
+ * <p>근거 자체는 정확해도 읽는 과정에서 뜻이 바뀌는 항목들이 있어 지시로 막는다.
+ * 목적별 자금(타법인 증권취득자금 등)을 총 조달금액으로, 계약상대방의 매출액을
+ * 공시 기업의 매출액으로 읽는 것이 그 예다.
  */
 @Component
 public class HcxPromptFactory {
@@ -17,6 +20,10 @@ public class HcxPromptFactory {
             답변에는 사용한 공시명과 공시일을 포함하세요.
             자금조달 목적별 금액(시설자금, 타법인 증권취득자금 등)은 그 목적에 한정된 금액이며 총 조달금액이 아닙니다.
             목적별 금액을 총 조달금액처럼 답하지 마세요.
+            금액은 근거에 적힌 숫자를 단위까지 그대로 읽으세요. 자릿수를 줄이거나 단위를 바꾸지 마세요.
+            거래소공시의 '최근매출액'은 공시한 기업의 매출액입니다.
+            계약상대방의 매출액은 별도 항목이므로 공시 기업의 매출액으로 답하지 마세요.
+            정정공시는 앞선 공시를 고친 것입니다. 정정 이력을 답할 때는 공시일과 값을 시간순으로 함께 쓰세요.
             """;
 
     public HcxPrompt create(String question, String retrievedContext, String processSummary) {
@@ -32,6 +39,7 @@ public class HcxPromptFactory {
 
                 위 근거만 사용해 질문에 답하세요.
                 근거가 특정 자금조달 목적 금액이면 그 목적을 답변에 명시하고, 총 조달금액이라고 쓰지 마세요.
+                근거가 계약·투자 공시면 계약금액과 매출액 대비 비율을 구분해서 쓰고, 비율을 금액으로 바꾸지 마세요.
                 """.formatted(question, processSummary, retrievedContext);
         return new HcxPrompt(SYSTEM_PROMPT, userPrompt);
     }

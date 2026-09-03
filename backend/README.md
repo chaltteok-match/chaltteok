@@ -23,6 +23,17 @@ cd infra
 docker compose down -v && docker compose up -d
 ```
 
+한 공시 유형만 지우고 다시 적재할 때는 **자식 표부터** 지워야 합니다. 순서를 지키지 않으면 외래 키 제약에 걸립니다.
+
+```sql
+delete from disclosure_relation_evidence_chunk;
+delete from changed_field;
+delete from disclosure_relation;
+delete from extracted_fact where doc_id in (select doc_id from disclosure_document where doc_group = 'EXCHANGE');
+delete from evidence_chunk   where doc_id in (select doc_id from disclosure_document where doc_group = 'EXCHANGE');
+delete from disclosure_document where doc_group = 'EXCHANGE';
+```
+
 ```bash
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/result.jsonl'

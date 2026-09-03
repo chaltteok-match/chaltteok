@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.disclosure.model.DisclosureDocument;
+import com.chaltteok.disclosure.model.DisclosureRelation;
 import com.chaltteok.disclosure.model.EvidenceChunk;
 import com.chaltteok.disclosure.model.ExtractedFact;
 import com.chaltteok.disclosure.model.PreprocessResult;
@@ -12,6 +13,7 @@ import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.model.enums.ManifestFileFormat;
 import com.chaltteok.disclosure.model.enums.PeriodBasis;
+import com.chaltteok.disclosure.model.enums.RelationType;
 import com.chaltteok.disclosure.model.enums.Scope;
 import com.chaltteok.disclosure.model.enums.SourceFormat;
 import com.chaltteok.disclosure.model.enums.ValueType;
@@ -73,16 +75,21 @@ class ExchangeAnswerHandlerIT {
         persistenceService.save(samsungContract("20250731800028", LocalDate.of(2025, 7, 31), true,
                 "[기재정정]단일판매ㆍ공급계약체결", "22,764,764,160,000", "22764764160000"));
 
-        // 대우건설 2023-06-30 — 같은 날 원본과 정정본의 금액이 다르다.
+        // 대우건설 2023-03-10 — 리비아 계약 원본.
+        persistenceService.save(daewooContract("20230310800034", LocalDate.of(2023, 3, 10), false,
+                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000", null));
+        // 같은 날 접수된 별개 계약. 아래 정정본과 아무 관계가 없다.
         persistenceService.save(daewooContract("20230630800613", LocalDate.of(2023, 6, 30), false,
-                "단일판매ㆍ공급계약체결", "400,119,500,000", "400119500000"));
-        persistenceService.save(daewooContract("20230630800615", LocalDate.of(2023, 6, 30), true,
-                "[기재정정]단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000"));
+                "단일판매ㆍ공급계약체결", "400,119,500,000", "400119500000", null));
+        // 2023-03-10 계약의 정정본. 접수일은 6월 30일이지만 고친 대상은 3월 10일 공시다.
+        persistenceService.save(daewooCorrection("20230630800615", LocalDate.of(2023, 6, 30),
+                "1,046,363,500,000", "1046363500000", LocalDate.of(2023, 3, 10),
+                "exchange_20230310800034"));
         // 다른 해의 더 큰 계약. 최댓값 질문이 연도를 지키는지 본다.
         persistenceService.save(daewooContract("20240628800100", LocalDate.of(2024, 6, 28), false,
-                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000"));
+                "단일판매ㆍ공급계약체결", "1,046,363,500,000", "1046363500000", null));
         persistenceService.save(daewooContract("20240115800200", LocalDate.of(2024, 1, 15), false,
-                "단일판매ㆍ공급계약체결", "1,006,253,000,000", "1006253000000"));
+                "단일판매ㆍ공급계약체결", "1,006,253,000,000", "1006253000000", null));
 
         // HMM 20230214 — 신규시설투자등.
         persistenceService.save(hmmInvestment());
@@ -108,15 +115,42 @@ class ExchangeAnswerHandlerIT {
     }
 
     @Test
-    void sameDayCorrectionSupersedesTheOriginal() {
-        // 원본 4,001억과 정정본 1조 463억이 같은 날 접수됐다. 정정본이 답이다.
+    void correctionBelongsToTheDateItCorrectsNotTheDateItWasFiled() {
+        // 2023-06-30에는 새 계약(4,001억)과 2023-03-10 계약의 정정본(1조 463억)이 함께 있다.
+        // 접수일만 보면 서로 다른 계약이 한 질문의 후보로 섞인다.
         AnswerHandlerResult result =
                 answer("대우건설이 2023년 6월 30일 공시한 공급계약의 계약금액은 얼마인가?");
 
         assertThat(result.isAnswerable()).isTrue();
-        assertThat(result.processSummary()).contains("1조 463억원").doesNotContain("4,001억");
+        assertThat(result.processSummary()).contains("4,001억원").doesNotContain("1조 463억원");
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().get(0).reportName()).doesNotStartWith("[기재정정]");
+    }
+
+    @Test
+    void correctedFilingIsAnsweredWithTheCorrectedValue() {
+        // 2023-03-10 계약을 물으면, 그 계약을 고친 정정본이 원본을 대체한다.
+        AnswerHandlerResult result =
+                answer("대우건설이 2023년 3월 10일 공시한 공급계약의 계약금액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isTrue();
         assertThat(result.evidences()).hasSize(1);
         assertThat(result.evidences().get(0).reportName()).startsWith("[기재정정]");
+        assertThat(result.evidences().get(0).reportDate()).isEqualTo(LocalDate.of(2023, 6, 30));
+    }
+
+    @Test
+    void tracksHowTheAmountChangedThroughCorrections() {
+        AnswerHandlerResult result =
+                answer("대우건설의 2023년 3월 10일 공급계약 금액은 어떻게 정정됐는가?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("정정 1회")
+                .contains("2023-03-10")
+                .contains("2023-06-30");
+        // 최초 공시와 정정본이 모두 근거로 남아야 변경 과정을 확인할 수 있다.
+        assertThat(result.evidences()).hasSize(2);
     }
 
     @Test
@@ -128,8 +162,7 @@ class ExchangeAnswerHandlerIT {
         assertThat(result.unavailableReason())
                 // 조사를 고정하면 '계약금액가'가 된다.
                 .contains("계약금액이 서로 달라")
-                .contains("2024-06-28")
-                .contains("2023-06-30");
+                .contains("2024-06-28");
         // 특정하지 못해도 찾은 근거는 남긴다.
         assertThat(result.evidences()).isNotEmpty();
     }
@@ -207,12 +240,32 @@ class ExchangeAnswerHandlerIT {
 
     private static PreprocessResult daewooContract(
             String rceptNo, LocalDate rceptDt, boolean correction,
-            String reportNm, String rawAmount, String normalizedAmount) {
+            String reportNm, String rawAmount, String normalizedAmount, String unused) {
         Fixture fixture = new Fixture("exchange_" + rceptNo);
         fixture.document = document("exchange_" + rceptNo, "대우건설", "00164839", "047040",
                 reportNm, rceptNo, rceptDt, correction);
         fixture.row("2. 계약내역", "계약금액(원)", "contract_amount",
                 rawAmount, normalizedAmount, "원", "KRW", rceptDt);
+        return fixture.build();
+    }
+
+    /** 정정본. 고친 대상의 접수일과 원본과의 관계를 함께 만든다. */
+    private static PreprocessResult daewooCorrection(
+            String rceptNo, LocalDate rceptDt, String rawAmount, String normalizedAmount,
+            LocalDate targetFilingDate, String originalDocId) {
+        String docId = "exchange_" + rceptNo;
+        Fixture fixture = new Fixture(docId);
+        fixture.document = document(docId, "대우건설", "00164839", "047040",
+                "[기재정정]단일판매ㆍ공급계약체결", rceptNo, rceptDt, true);
+        fixture.row(null, "정정관련 공시서류제출일", "correction_target_filing_date",
+                targetFilingDate.toString(), targetFilingDate.toString(), null, null, rceptDt,
+                ValueType.DATE);
+        fixture.row("2. 계약내역", "계약금액(원)", "contract_amount",
+                rawAmount, normalizedAmount, "원", "KRW", rceptDt);
+        fixture.relations.add(new DisclosureRelation(
+                "%s:%s:correction".formatted(originalDocId, docId),
+                originalDocId, originalDocId, docId, RelationType.CORRECTION,
+                null, null, List.of(), List.of(fixture.chunks.get(0).chunkId())));
         return fixture.build();
     }
 
@@ -243,6 +296,7 @@ class ExchangeAnswerHandlerIT {
         private final String docId;
         private final List<EvidenceChunk> chunks = new ArrayList<>();
         private final List<ExtractedFact> facts = new ArrayList<>();
+        private final List<DisclosureRelation> relations = new ArrayList<>();
         private DisclosureDocument document;
 
         private Fixture(String docId) {
@@ -252,6 +306,13 @@ class ExchangeAnswerHandlerIT {
         private void row(String section, String label, String factKey,
                 String rawValue, String normalizedValue,
                 String rawUnit, String normalizedUnit, LocalDate asOfDate) {
+            row(section, label, factKey, rawValue, normalizedValue, rawUnit, normalizedUnit,
+                    asOfDate, ValueType.NUMBER);
+        }
+
+        private void row(String section, String label, String factKey,
+                String rawValue, String normalizedValue,
+                String rawUnit, String normalizedUnit, LocalDate asOfDate, ValueType valueType) {
             int sequence = chunks.size();
             String chunkId = "%s:chunk:%04d".formatted(docId, sequence);
             String text = section == null
@@ -262,14 +323,14 @@ class ExchangeAnswerHandlerIT {
                     null, section, section, label, null));
             facts.add(new ExtractedFact(
                     "%s:fact:%04d".formatted(docId, facts.size()), docId, chunkId, factKey, label,
-                    ValueType.NUMBER, rawValue, rawUnit, normalizedValue, normalizedUnit,
+                    valueType, rawValue, rawUnit, normalizedValue, normalizedUnit,
                     null, null, asOfDate,
                     // 거래소공시는 사건 공시다. 값은 접수 시점의 상태를 가리킨다.
                     PeriodBasis.POINT_IN_TIME, Scope.NOT_APPLICABLE, ExtractionStatus.OK));
         }
 
         private PreprocessResult build() {
-            return new PreprocessResult("0.2", "0.1.0", document, chunks, facts, List.of());
+            return new PreprocessResult("0.2", "0.2.0", document, chunks, facts, relations);
         }
     }
 }

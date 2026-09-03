@@ -25,6 +25,10 @@ final class ExchangeQuestionParser {
      * 최댓값을 묻는 표현. 활용형까지 받는다.
      * '가장 큰'의 '큰'은 어간 '크'와 글자가 달라 어간만 보면 걸리지 않는다.
      */
+    /** 이력추적을 묻는 표현. 값 하나가 아니라 바뀐 과정을 답한다. */
+    private static final Pattern HISTORY = Pattern.compile(
+            "정정|변경|바뀌|바뀐|바뀔|달라진|수정|이력|추이|변화|어떻게\\s*변");
+
     private static final Pattern LARGEST = Pattern.compile(
             "(?:가장|제일)\\s*(?:크|큰|커|많|많은|높|높은)|최대|최고");
 
@@ -112,7 +116,8 @@ final class ExchangeQuestionParser {
                 topic,
                 factKey,
                 factKey == null ? null : ITEM_LABELS.get(factKey),
-                LARGEST.matcher(text).find());
+                LARGEST.matcher(text).find(),
+                HISTORY.matcher(text).find());
     }
 
     /** 등록된 순서대로 본다. 긴 표현을 앞에 둬 '계약해지'가 '계약금액'보다 먼저 걸린다. */

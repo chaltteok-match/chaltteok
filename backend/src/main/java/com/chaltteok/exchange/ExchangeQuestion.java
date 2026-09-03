@@ -12,6 +12,7 @@ import java.time.LocalDate;
  * @param factKey    답할 항목의 fact_key
  * @param itemLabel  항목의 한국어 표기
  * @param largest    "가장 큰"처럼 최댓값을 묻는지
+ * @param history    "정정"·"바뀐"처럼 값이 아니라 변경 과정을 묻는지
  */
 record ExchangeQuestion(
         String corpName,
@@ -20,7 +21,8 @@ record ExchangeQuestion(
         ExchangeTopic topic,
         String factKey,
         String itemLabel,
-        boolean largest
+        boolean largest,
+        boolean history
 ) {
     boolean isIdentified() {
         return corpName != null && topic != null && factKey != null;

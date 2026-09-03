@@ -8,14 +8,18 @@ import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.model.enums.ExtractionStatus;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
+import com.chaltteok.disclosure.persistence.entity.DisclosureRelationEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
+import com.chaltteok.disclosure.persistence.repository.DisclosureRelationRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -64,15 +68,21 @@ public class ExchangeAnswerHandler implements AnswerHandler {
     /** 답변 불가 사유에 나열할 공시일 최대 건수. */
     private static final int MAX_LISTED_DATES = 5;
 
+    /** 정정본이 가리키는 원본의 접수일. 이 값이 그 계약이 처음 공시된 날이다. */
+    private static final String TARGET_FILING_DATE_KEY = "correction_target_filing_date";
+
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
+    private final DisclosureRelationRepository relationRepository;
 
     public ExchangeAnswerHandler(
             DisclosureDocumentRepository documentRepository,
-            ExtractedFactRepository factRepository
+            ExtractedFactRepository factRepository,
+            DisclosureRelationRepository relationRepository
     ) {
         this.documentRepository = documentRepository;
         this.factRepository = factRepository;
+        this.relationRepository = relationRepository;
     }
 
     @Override
@@ -96,6 +106,10 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                 parsed.corpName(), formName, parsed.itemLabel());
 
         List<DisclosureDocumentEntity> documents = selectDocuments(parsed, formName);
+        if (!parsed.history()) {
+            // 이력추적은 바뀐 과정을 묻는 것이라 정정된 문서도 함께 봐야 한다.
+            documents = withoutSuperseded(documents);
+        }
         if (documents.isEmpty()) {
             return AnswerHandlerResult.unavailable(
                     summaryPrefix + " → 조건에 맞는 거래소공시를 찾지 못함",
@@ -119,9 +133,96 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                     "찾은 %s 공시에 %s가 기재되어 있지 않습니다".formatted(formName, parsed.itemLabel()));
         }
 
+        if (parsed.history()) {
+            return history(parsed, usable, searchSummary);
+        }
         return parsed.largest()
                 ? largest(parsed, usable, searchSummary)
                 : single(parsed, usable, searchSummary);
+    }
+
+    /**
+     * 값이 언제 얼마에서 얼마로 바뀌었는지 답한다.
+     *
+     * <p>정정 사슬은 전처리가 만든 관계를 따라간다. 사건 키는 사슬의 맨 처음 원본이라,
+     * 정정의 정정도 한 사건으로 묶인다. 현대건설 20230626800002는 6조 5,544억으로
+     * 시작해 14번 정정되며 3조 900억이 됐다.
+     */
+    private AnswerHandlerResult history(
+            ExchangeQuestion parsed, List<ExtractedFactEntity> facts, String searchSummary) {
+        List<String> docIds = facts.stream()
+                .map(fact -> fact.getDocument().getDocId())
+                .distinct()
+                .toList();
+        List<DisclosureRelationEntity> relations = relationRepository.findByDocIds(docIds);
+        if (relations.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    partialEvidences(facts),
+                    searchSummary + " → 정정 이력 없음",
+                    "찾은 %s 공시에 정정 이력이 없습니다".formatted(FORM_NAMES.get(parsed.topic())));
+        }
+
+        // 후보에 걸린 사건 중 정정이 가장 많은 사슬을 고른다.
+        String eventKey = relations.stream()
+                .collect(Collectors.groupingBy(
+                        DisclosureRelationEntity::getEventKey, Collectors.counting()))
+                .entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .orElseThrow()
+                .getKey();
+        List<DisclosureRelationEntity> chain = relationRepository.findChainByEventKey(eventKey);
+        if (chain.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    partialEvidences(facts),
+                    searchSummary + " → 정정 사슬을 읽지 못함",
+                    "정정 이력을 확인할 수 없습니다");
+        }
+
+        return chainAnswer(parsed, chain, searchSummary);
+    }
+
+    private AnswerHandlerResult chainAnswer(
+            ExchangeQuestion parsed,
+            List<DisclosureRelationEntity> chain,
+            String searchSummary) {
+        DisclosureDocumentEntity root = chain.get(0).getOriginalDocument();
+        List<String> chainIds = new ArrayList<>();
+        chainIds.add(root.getDocId());
+        chain.forEach(relation -> chainIds.add(relation.getRelatedDocument().getDocId()));
+
+        Map<String, ExtractedFactEntity> byDoc = new LinkedHashMap<>();
+        for (ExtractedFactEntity fact
+                : factRepository.findForAnswerByDocIds(chainIds, parsed.factKey())) {
+            byDoc.put(fact.getDocument().getDocId(), fact);
+        }
+
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        StringBuilder steps = new StringBuilder();
+        for (String docId : chainIds) {
+            ExtractedFactEntity fact = byDoc.get(docId);
+            if (fact == null) {
+                continue;
+            }
+            if (!steps.isEmpty()) {
+                steps.append(" → ");
+            }
+            steps.append("%s %s".formatted(fact.getDocument().getRceptDt(), display(fact)));
+            RetrievedEvidence evidence = evidenceOf(fact);
+            if (!evidences.contains(evidence)) {
+                evidences.add(evidence);
+            }
+        }
+        if (evidences.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 사슬에서 해당 항목의 값을 찾지 못함",
+                    "정정 이력은 있으나 %s%s 비교할 수 없습니다".formatted(
+                            parsed.itemLabel(), KoreanParticle.object(parsed.itemLabel())));
+        }
+
+        String summary = searchSummary
+                + " → '%s'(%s) 최초 공시부터 정정 %d회: %s".formatted(
+                        root.getReportNm(), root.getRceptDt(), chain.size(), steps);
+        return AnswerHandlerResult.of(evidences, summary);
     }
 
     /**
@@ -132,10 +233,10 @@ public class ExchangeAnswerHandler implements AnswerHandler {
      */
     private List<DisclosureDocumentEntity> selectDocuments(
             ExchangeQuestion parsed, String formName) {
-        List<DisclosureDocumentEntity> documents = parsed.reportDate() != null
-                ? documentRepository.findByCorpNameAndDocGroupAndRceptDtOrderByRceptNoDesc(
-                        parsed.corpName(), DocGroup.EXCHANGE, parsed.reportDate())
-                : documentRepository.findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(
+        // 공시일을 지정해도 그 날짜만 읽지 않는다. 그 계약의 정정본은 나중에 접수되므로
+        // 접수일로 좁히면 정정된 값을 놓친다.
+        List<DisclosureDocumentEntity> documents =
+                documentRepository.findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(
                         parsed.corpName(), DocGroup.EXCHANGE);
 
         List<DisclosureDocumentEntity> matched = documents.stream()
@@ -143,8 +244,74 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                 .filter(document -> parsed.year() == null
                         || document.getRceptDt().getYear() == parsed.year())
                 .toList();
+        if (parsed.reportDate() == null) {
+            return matched;
+        }
 
-        return parsed.reportDate() == null ? matched : supersededByCorrection(matched);
+        return onlyFiledOn(matched, parsed.reportDate());
+    }
+
+    /**
+     * 그날 공시된 계약만 남긴다.
+     *
+     * <p>정정본은 그날 새로 맺은 계약이 아니라 **앞선 공시를 고친 것**이다. 대우건설
+     * 2023-06-30에는 새 계약(4,001억)과 2023-03-10 계약의 정정본(1조 463억)이 함께 있다.
+     * 접수일만 보면 서로 다른 계약이 한 질문의 후보로 섞인다.
+     */
+    private List<DisclosureDocumentEntity> onlyFiledOn(
+            List<DisclosureDocumentEntity> documents, LocalDate reportDate) {
+        if (documents.isEmpty()) {
+            return documents;
+        }
+        Map<String, LocalDate> targetDates = targetFilingDates(documents);
+        return documents.stream()
+                .filter(document -> reportDate.equals(
+                        targetDates.getOrDefault(document.getDocId(), document.getRceptDt())))
+                .toList();
+    }
+
+    /** 정정본마다 그 계약이 처음 공시된 날. 정정본이 아니면 값이 없다. */
+    private Map<String, LocalDate> targetFilingDates(List<DisclosureDocumentEntity> documents) {
+        List<String> correctionIds = documents.stream()
+                .filter(DisclosureDocumentEntity::isCorrection)
+                .map(DisclosureDocumentEntity::getDocId)
+                .toList();
+        if (correctionIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, LocalDate> dates = new LinkedHashMap<>();
+        for (ExtractedFactEntity fact
+                : factRepository.findForAnswerByDocIds(correctionIds, TARGET_FILING_DATE_KEY)) {
+            if (fact.getNormalizedValue() != null) {
+                dates.put(fact.getDocument().getDocId(), LocalDate.parse(fact.getNormalizedValue()));
+            }
+        }
+        return dates;
+    }
+
+    /**
+     * 뒤에 정정된 문서를 뺀다.
+     *
+     * <p>정정 관계는 전처리가 `정정관련 공시서류제출일`로 확정해 둔 것이라
+     * 같은 날이라는 이유로 묶지 않는다.
+     */
+    private List<DisclosureDocumentEntity> withoutSuperseded(
+            List<DisclosureDocumentEntity> documents) {
+        if (documents.size() < 2) {
+            return documents;
+        }
+        List<String> docIds = documents.stream()
+                .map(DisclosureDocumentEntity::getDocId)
+                .toList();
+        Set<String> superseded = relationRepository.findByDocIds(docIds).stream()
+                .filter(relation -> docIds.contains(relation.getRelatedDocument().getDocId()))
+                .map(relation -> relation.getOriginalDocument().getDocId())
+                .collect(Collectors.toSet());
+        return superseded.isEmpty()
+                ? documents
+                : documents.stream()
+                        .filter(document -> !superseded.contains(document.getDocId()))
+                        .toList();
     }
 
     /**
@@ -162,19 +329,6 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                 ? reportNm.substring(CORRECTION_PREFIX.length())
                 : reportNm;
         return base.startsWith(formName);
-    }
-
-    /**
-     * 같은 날 정정본이 있으면 원본을 뺀다.
-     *
-     * <p>정정본은 같은 계약을 다시 낸 것이라 원본과 함께 두면 값이 둘로 갈린다.
-     */
-    private static List<DisclosureDocumentEntity> supersededByCorrection(
-            List<DisclosureDocumentEntity> documents) {
-        boolean hasCorrection = documents.stream().anyMatch(DisclosureDocumentEntity::isCorrection);
-        return hasCorrection
-                ? documents.stream().filter(DisclosureDocumentEntity::isCorrection).toList()
-                : documents;
     }
 
     /** 최댓값을 묻는 질문. 금액이 아닌 항목은 크기를 비교하지 않는다. */

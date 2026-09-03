@@ -24,6 +24,7 @@ from .common.manifest import (
     resolve_source_dir,
 )
 from .common.models import PreprocessResult
+from .exchange.corrections import link_corrections
 from .exchange.krx_forms import parse_exchange_disclosure
 from .material.paid_in_capital import parse_paid_in_capital_increase
 from .periodic.summary_financials import (
@@ -33,6 +34,7 @@ from .periodic.summary_financials import (
 
 Parser = Callable[[Path, dict[str, Any]], PreprocessResult]
 Supports = Callable[[dict[str, Any]], bool]
+Linker = Callable[[list[PreprocessResult]], list[PreprocessResult]]
 
 
 def _parse_major(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
@@ -59,6 +61,16 @@ class ParserEntry:
 
     parse: Parser
     supports: Supports
+    link: Linker | None = None
+    """문서를 다 읽은 뒤 문서 사이의 관계를 잇는다.
+
+    파서는 문서 한 건만 보므로 정정본이 어느 문서를 고쳤는지 알 수 없다. 관계를
+    만들려면 같은 기업의 다른 공시를 함께 봐야 한다. 이 훅이 있는 유형은 결과를
+    모았다가 한 번에 처리하고, 없는 유형은 읽는 대로 흘려보낸다.
+
+    관계의 두 문서는 적재 시점에 이미 저장돼 있어야 하므로, 훅은 원본이 앞에 오도록
+    정렬해 돌려준다.
+    """
 
 
 PARSERS: dict[str, ParserEntry] = {
@@ -76,6 +88,7 @@ PARSERS: dict[str, ParserEntry] = {
         parse=_parse_exchange,
         # 서식 4종이 전부다. 모르는 서식은 건너뛰지 않고 실패로 드러낸다.
         supports=lambda row: True,
+        link=link_corrections,
     ),
     # "holding": 지분공시 파서가 생기면 여기 등록한다.
 }
@@ -148,6 +161,8 @@ def run(corpus_root: Path, rows: list[dict[str, Any]], output: Path) -> RunSumma
     """고른 문서를 처리해 ``output``에 JSONL로 쓴다. 1줄 = PreprocessResult 1건."""
     summary = RunSummary(documents=len(rows))
     output.parent.mkdir(parents=True, exist_ok=True)
+    # 관계를 잇는 유형만 모아 둔다. 나머지는 읽는 대로 흘려보낸다.
+    pending: dict[str, list[PreprocessResult]] = {}
 
     with output.open("w", encoding="utf-8") as sink:
         for row in rows:
@@ -170,15 +185,26 @@ def run(corpus_root: Path, rows: list[dict[str, Any]], output: Path) -> RunSumma
                 )
                 continue
 
-            sink.write(result.model_dump_json() + "\n")
-            summary.succeeded += 1
-            summary.evidence_chunks += len(result.evidence_chunks)
-            summary.extracted_facts += len(result.extracted_facts)
-            summary.relations += len(result.relations)
-            for fact in result.extracted_facts:
-                summary.extraction_status[fact.extraction_status.value] += 1
+            if entry.link is None:
+                _write(sink, result, summary)
+            else:
+                pending.setdefault(doc_group, []).append(result)
+
+        for doc_group, results in pending.items():
+            for result in PARSERS[doc_group].link(results):
+                _write(sink, result, summary)
 
     return summary
+
+
+def _write(sink, result: PreprocessResult, summary: RunSummary) -> None:
+    sink.write(result.model_dump_json() + "\n")
+    summary.succeeded += 1
+    summary.evidence_chunks += len(result.evidence_chunks)
+    summary.extracted_facts += len(result.extracted_facts)
+    summary.relations += len(result.relations)
+    for fact in result.extracted_facts:
+        summary.extraction_status[fact.extraction_status.value] += 1
 
 
 def _logical(corpus_root: Path, row: dict[str, Any]) -> str:

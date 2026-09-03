@@ -59,6 +59,11 @@ RE_SCOPE_IN_HEADER = re.compile(r"[(（]\s*(연결|별도|개별)\s*[)）]")
 # 라벨 앞의 번호·로마자 접두 제거: '2.당기순이익', 'I.영업수익'
 RE_LABEL_PREFIX = re.compile(r"^[\sㆍ·\-\*○●□■◦▪]*(?:[IVXivx]+|\d+)\s*[.)]\s*")
 RE_LABEL_BULLET = re.compile(r"^[\sㆍ·\-\*○●□■◦▪.]+")
+# 전각 로마자 접두: 'Ⅰ.영업이익'. RE_LABEL_PREFIX의 [IVXivx]는 ASCII만 잡는다.
+RE_LABEL_ROMAN = re.compile(r"^[\u2160-\u217f]+\s*[.)]\s*")
+# 라벨 전체를 감싼 대괄호만 벗긴다: '[매출액]' → '매출액'.
+# 뒤쪽만 보고 벗기면 '영업이익(손실)'의 닫는 괄호를 지워 매칭이 깨진다.
+RE_LABEL_WRAP = re.compile(r"^\[(.+)\]$")
 
 UNIT_MULTIPLIERS: dict[str, Decimal] = {
     "원": Decimal(1),
@@ -78,6 +83,7 @@ for _key, _labels in {
     "net_income": (
         "당기순이익", "당기순이익(손실)", "당기순이익(당기순손실)", "연결당기순이익",
         "연결총당기순이익", "총당기순이익", "당기연결순이익", "반기순이익", "분기순이익",
+        "당기순손실", "연결당기순손실", "반기순손실", "분기순손실",
     ),
     "total_assets": ("자산총계",),
     "total_liabilities": ("부채총계",),
@@ -133,8 +139,14 @@ class PeriodColumn:
 def normalize_label(text: str) -> str:
     """비교용 라벨 정규화. 원문 라벨 자체는 보존한다."""
     text = RE_LABEL_PREFIX.sub("", text)
+    text = RE_LABEL_ROMAN.sub("", text)
     text = RE_LABEL_BULLET.sub("", text)
-    return re.sub(r"\s+", "", text).strip()
+    text = re.sub(r"\s+", "", text).strip()
+    wrapped = RE_LABEL_WRAP.match(text)
+    if wrapped:
+        inner = RE_LABEL_PREFIX.sub("", wrapped.group(1))
+        text = RE_LABEL_BULLET.sub("", inner)
+    return text
 
 
 def parse_amount(raw: str) -> Decimal | None:

@@ -191,6 +191,76 @@ def test_영업이익_라벨_변형과_음수_기호를_처리한다(tmp_path):
     assert values[2023] == "-11526297000000"
 
 
+def test_대괄호로_감싼_라벨을_인식한다(tmp_path):
+    """이마트·삼성SDI·에코프로비엠·두산로보틱스는 '[매출액]'처럼 대괄호로 감싼다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("[매출액]", "29,472,248", "29,332,414", "24,932,681"),
+                row_xml("[영업이익]", "-46,935", "135,652", "316,791"),
+                row_xml("[연결당기순손실]", "-187,466", "1,007,726", "1,589,074"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "revenue")}[2024] == "29472248000000"
+    assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "operating_profit")}[2024] == "-46935000000"
+    assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "net_income")}[2024] == "-187466000000"
+
+
+def test_전각_로마자_접두를_벗긴다(tmp_path):
+    """신한지주는 'Ⅰ.영업이익'처럼 전각 로마자를 쓴다. ASCII I가 아니다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("Ⅰ.영업이익", "1,000", "2,000", "3,000"),
+                row_xml("Ⅵ.당기순이익", "4,000", "5,000", "6,000"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert facts_by_key(result, "operating_profit")
+    assert facts_by_key(result, "net_income")
+
+
+def test_대괄호를_벗기다가_괄호_라벨을_깨뜨리지_않는다(tmp_path):
+    """'영업이익(손실)'의 닫는 괄호를 지우면 매칭이 깨진다."""
+    body = (
+        "<P>나. 요약별도재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("영업이익(손실)", "12,361,034", "△11,526,297", "25,319,329"),
+                row_xml("당기순이익(손실)", "100", "200", "300"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert facts_by_key(result, "operating_profit")
+    assert facts_by_key(result, "net_income")
+
+
+def test_대괄호를_벗겨도_대상이_아닌_항목은_그대로_거른다(tmp_path):
+    """'[유동자산]'은 벗겨도 '유동자산'이라 화이트리스트에 없다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("[유동자산]", "1", "2", "3"),
+                row_xml("[법인세차감전계속영업순손실]", "4", "5", "6"),
+                row_xml("[자산총계]", "7", "8", "9"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert {f.fact_key for f in result.extracted_facts} == {"total_assets"}
+
+
 def test_연결과_별도를_구분한다(tmp_path):
     body = CONSOLIDATED_BODY + (
         "<P>나. 요약별도재무정보</P>"

@@ -160,7 +160,9 @@ def normalize_label(text: str) -> str:
     text = re.sub(r"\s+", "", text).strip()
     wrapped = RE_LABEL_WRAP.match(text)
     if wrapped:
+        # 대괄호를 벗긴 뒤에도 접두가 남을 수 있다: '[Ⅰ.영업이익]'
         inner = RE_LABEL_PREFIX.sub("", wrapped.group(1))
+        inner = RE_LABEL_ROMAN.sub("", inner)
         text = RE_LABEL_BULLET.sub("", inner)
     return text
 

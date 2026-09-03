@@ -210,6 +210,17 @@ def test_대괄호로_감싼_라벨을_인식한다(tmp_path):
     assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "net_income")}[2024] == "-187466000000"
 
 
+def test_대괄호를_벗긴_뒤에도_전각_로마자_접두를_벗긴다(tmp_path):
+    """'[Ⅰ.영업이익]'처럼 두 표기가 겹쳐도 인식한다. 코퍼스에는 없지만 규칙이 겹칠 수 있다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("[Ⅰ.영업이익]", "1,000", "900", "800"),))
+    )
+    result = parse(tmp_path, body)
+    assert facts_by_key(result, "operating_profit")
+
+
 def test_전각_로마자_접두를_벗긴다(tmp_path):
     """신한지주는 'Ⅰ.영업이익'처럼 전각 로마자를 쓴다. ASCII I가 아니다."""
     body = (

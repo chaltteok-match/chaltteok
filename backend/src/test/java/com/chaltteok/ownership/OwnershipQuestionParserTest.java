@@ -23,6 +23,22 @@ class OwnershipQuestionParserTest {
     }
 
     @Test
+    void matchesItemKeywordsIgnoringWhitespace() {
+        assertThat(OwnershipQuestionParser.parse(
+                "SK하이닉스가 2023년 6월 7일 공시한 대량보유상황보고서의 보유 목적은?",
+                CORPS).factKey())
+                .isEqualTo(OwnershipQuestionParser.PURPOSE_FACT_KEY);
+        assertThat(OwnershipQuestionParser.parse("삼성전자 보유목적은?", CORPS).factKey())
+                .isEqualTo(OwnershipQuestionParser.PURPOSE_FACT_KEY);
+        assertThat(OwnershipQuestionParser.parse("삼성전자 보유 비율은?", CORPS).factKey())
+                .isEqualTo(OwnershipQuestionParser.RATIO_FACT_KEY);
+        assertThat(OwnershipQuestionParser.parse("삼성전자 보유 주식 수는?", CORPS).factKey())
+                .isEqualTo(OwnershipQuestionParser.SHARES_FACT_KEY);
+        assertThat(OwnershipQuestionParser.parse("삼성전자 보고 구분은?", CORPS).factKey())
+                .isEqualTo(OwnershipQuestionParser.REPORT_TYPE_FACT_KEY);
+    }
+
+    @Test
     void treatsPlainHoldingQuestionAsOverview() {
         OwnershipQuestion parsed = OwnershipQuestionParser.parse(
                 "삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서는?",

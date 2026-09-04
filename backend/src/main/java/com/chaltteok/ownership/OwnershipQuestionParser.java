@@ -46,12 +46,18 @@ final class OwnershipQuestionParser {
     static OwnershipQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
         String corpName = corpNames.resolve(text);
+        String compactQuestion = compact(text);
         String item = ITEM_KEYWORDS.keySet().stream()
-                .filter(text::contains)
+                .filter(keyword -> compactQuestion.contains(compact(keyword)))
                 .findFirst()
                 .orElse(null);
         String factKey = item == null ? null : ITEM_KEYWORDS.get(item);
         String itemLabel = item == null ? "대량보유 현황" : item;
         return new OwnershipQuestion(corpName, factKey, itemLabel);
+    }
+
+    /** 평가 질의의 띄어쓰기 차이를 무시한다. {@code 보유 목적}과 {@code 보유목적}을 같게 본다. */
+    private static String compact(String value) {
+        return value.replaceAll("\\s+", "");
     }
 }

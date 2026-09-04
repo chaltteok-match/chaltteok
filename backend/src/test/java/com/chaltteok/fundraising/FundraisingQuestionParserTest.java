@@ -58,6 +58,7 @@ class FundraisingQuestionParserTest {
         assertThat(excluded.excludedFactKeys())
                 .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
         assertThat(excluded.itemLabel()).contains("제외");
+        assertThat(excluded.itemLabel()).doesNotContain("자금 사용 목적 합계");
     }
 
     @Test
@@ -70,6 +71,7 @@ class FundraisingQuestionParserTest {
                 .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
         assertThat(parsed.itemLabel()).contains("타법인").contains("제외");
         assertThat(parsed.itemLabel()).doesNotContain("시설자금");
+        assertThat(parsed.itemLabel()).doesNotContain("자금 사용 목적 합계");
     }
 
     @Test

@@ -191,6 +191,7 @@ class FundraisingAnswerIT {
                         containsString("700,020,800,000원")
                 )))
                 .andExpect(jsonPath("$.think_trace").value(not(containsString("1,600,000,000,000원"))))
+                .andExpect(jsonPath("$.think_trace").value(not(containsString("자금 사용 목적 합계"))))
                 .andExpect(jsonPath("$.retrieved_context").value(allOf(
                         containsString("시설자금"),
                         containsString("700,020,800,000")

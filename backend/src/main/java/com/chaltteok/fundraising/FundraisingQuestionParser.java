@@ -216,7 +216,7 @@ final class FundraisingQuestionParser {
                 labels.add(entry.getKey());
             }
         }
-        return "자금 사용 목적 합계(" + String.join(", ", labels) + " 제외)";
+        return String.join(", ", labels) + "을 제외한 목적별 금액";
     }
 
     private static String purposeImmediatelyFollowedByTotalMarker(String text) {

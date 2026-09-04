@@ -7,7 +7,9 @@ import java.util.Set;
  *
  * @param corpName          코퍼스에 적재된 법인명
  * @param factKey           목적별 항목. 합계·제외 합계 질문이면 {@code null}
- * @param itemLabel         질문에 쓰인 목적 표현. 합계면 {@code "자금 사용 목적 합계"}
+ * @param itemLabel         질문에 쓰인 목적 표현. 전체 합계면 {@code "자금 사용 목적 합계"}.
+ *                          목적을 뺀 합계는 {@code "…을 제외한 목적별 금액"}이며
+ *                          {@code 자금 사용 목적 합계}라고 쓰지 않는다.
  * @param excludedFactKeys  합계에서 빼는 목적. 없으면 빈 집합
  * @param history           바뀐 과정을 묻는지. {@code 정정한}만으로는 거짓
  */

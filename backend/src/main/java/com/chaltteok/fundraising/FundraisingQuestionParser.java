@@ -20,8 +20,9 @@ import java.util.regex.Pattern;
  * 다른 말이 끼면 합계다.
  *
  * <p>{@code 제외한}·{@code 빼고}가 목적 바로 뒤에 있으면 그 목적만 뺀 합계다.
- * {@code 시설자금을 포함하고 타법인 증권취득을 제외한 총액}처럼 포함과 제외가
- * 같이 나와도 제외에 붙은 목적만 뺀다. {@code 포함한}만 있으면 전체 합계다.
+ * {@code 시설자금과 운영자금을 제외한 총액}처럼 접속사만으로 이어진 목적은
+ * 뒤 목적의 포함·제외를 따른다. {@code 시설자금을 포함하고 타법인 증권취득을 제외한 총액}처럼
+ * 포함과 제외가 같이 나와도 제외에 붙은 목적만 뺀다. {@code 포함한}만 있으면 전체 합계다.
  * {@code 어떻게 바뀌었나}·{@code 변경된 내역}처럼 바뀐 과정을 물으면 이력 질문이다.
  * {@code 정정한}·{@code 정정공시}만 있으면 그 공시 한 건을 고르는 말로 본다.
  */
@@ -128,22 +129,38 @@ final class FundraisingQuestionParser {
 
     /**
      * 목적 표현 뒤에, 다음 목적 전까지 구간에 {@code 제외}·{@code 빼고}가 있으면 뺀다.
-     * 질문에 목적이 여러 개여도 포함에 붙은 쪽은 빼지 않는다.
+     * {@code 과}·{@code 와}·{@code 및}·{@code ,}만으로 이어진 앞 목적은 뒤 목적과 같이 본다.
      */
     private static Set<String> excludedPurposes(String text) {
         if (!asksToExclude(text)) {
             return Set.of();
         }
         List<PurposeSpan> spans = purposeSpans(text);
-        Set<String> excluded = new LinkedHashSet<>();
+        boolean[] excluded = new boolean[spans.size()];
         for (int index = 0; index < spans.size(); index++) {
             PurposeSpan span = spans.get(index);
             int windowEnd = index + 1 < spans.size() ? spans.get(index + 1).start() : text.length();
-            if (asksToExclude(text.substring(span.end(), windowEnd))) {
-                excluded.add(span.factKey());
+            excluded[index] = asksToExclude(text.substring(span.end(), windowEnd));
+        }
+        for (int index = spans.size() - 2; index >= 0; index--) {
+            PurposeSpan current = spans.get(index);
+            PurposeSpan next = spans.get(index + 1);
+            if (conjunctionOnly(text.substring(current.end(), next.start()))) {
+                excluded[index] = excluded[index + 1];
             }
         }
-        return excluded;
+        Set<String> keys = new LinkedHashSet<>();
+        for (int index = 0; index < spans.size(); index++) {
+            if (excluded[index]) {
+                keys.add(spans.get(index).factKey());
+            }
+        }
+        return keys;
+    }
+
+    private static boolean conjunctionOnly(String gap) {
+        String compact = gap.replaceAll("\\s+", "");
+        return !compact.isEmpty() && compact.matches("(과|와|및|,|·)+");
     }
 
     private static List<PurposeSpan> purposeSpans(String text) {

@@ -2,6 +2,7 @@ package com.chaltteok.fundraising;
 
 import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.CorpNameResolver;
+import com.chaltteok.answer.DisclosureTypeMarkers;
 import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.KoreanAmountFormatter;
@@ -102,6 +103,10 @@ public class FundraisingAnswerHandler implements AnswerHandler {
     @Override
     public boolean supports(String question) {
         if (question == null || !question.contains(REPORT_KEYWORD)) {
+            return false;
+        }
+        // `유상증자 참여 이후 대량보유 지분율`은 지분공시 질문이다. 순위가 앞선다고 가져가지 않는다.
+        if (DisclosureTypeMarkers.mentions(question, DisclosureTypeMarkers.OWNERSHIP)) {
             return false;
         }
         return parse(question).corpName() != null;

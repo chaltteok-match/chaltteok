@@ -35,13 +35,17 @@ from chaltteok_etl.common.dart_xml import (
 SCHEMA_VERSION = "0.2"
 PARSER_VERSION = "0.1.0"
 
-TREASURY_ACQUISITION_DOCUMENT_ACODE = "11310"
+# 코퍼스 원문은 11332. 구 서식·테스트 픽스처는 11310을 쓴다.
+TREASURY_ACQUISITION_DOCUMENT_ACODES = frozenset({"11310", "11332"})
+TREASURY_ACQUISITION_DOCUMENT_ACODE = "11332"
 DOCUMENT_NAME_MARK = "자기주식취득결정"
 
 SHARES_FACT_KEY = "treasury_planned_common_shares"
 AMOUNT_FACT_KEY = "treasury_planned_common_amount"
 
 ACODE_FACT_KEYS: dict[str, str] = {
+    "ACQ_OSTK": SHARES_FACT_KEY,
+    "ACQ_OSTK_PRC": AMOUNT_FACT_KEY,
     "AQPLN_STK_OSTK": SHARES_FACT_KEY,
     "AQPLN_STK": SHARES_FACT_KEY,
     "AQ_PLN_CNT": SHARES_FACT_KEY,
@@ -88,13 +92,14 @@ def parse_treasury_stock_acquisition(
 
 def _assert_form(root) -> None:
     name = document_name(root)
+    compact_name = name.replace(" ", "")
     acode = document_acode(root)
-    if acode != TREASURY_ACQUISITION_DOCUMENT_ACODE:
+    if acode not in TREASURY_ACQUISITION_DOCUMENT_ACODES:
         raise ValueError(
             "DOCUMENT-NAME ACODE must be "
-            f"{TREASURY_ACQUISITION_DOCUMENT_ACODE} (자기주식취득결정 서식), got {acode!r}"
+            f"{sorted(TREASURY_ACQUISITION_DOCUMENT_ACODES)} (자기주식취득결정 서식), got {acode!r}"
         )
-    if DOCUMENT_NAME_MARK not in name:
+    if DOCUMENT_NAME_MARK not in compact_name:
         raise ValueError(f"DOCUMENT-NAME {name!r} is not a {DOCUMENT_NAME_MARK} form")
     if "신탁" in name or "처분" in name:
         raise ValueError(f"DOCUMENT-NAME {name!r} is not a 자기주식취득결정 form")

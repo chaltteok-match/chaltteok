@@ -1,8 +1,8 @@
 package com.chaltteok.treasury;
 
+import com.chaltteok.answer.CorpNameResolver;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,9 +34,9 @@ final class TreasuryQuestionParser {
     private TreasuryQuestionParser() {
     }
 
-    static TreasuryQuestion parse(String question, List<String> knownCorpNames) {
+    static TreasuryQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
-        String corpName = longestMatch(text, knownCorpNames);
+        String corpName = corpNames.resolve(text);
         String item = ITEM_KEYWORDS.keySet().stream()
                 .filter(text::contains)
                 .findFirst()
@@ -44,16 +44,5 @@ final class TreasuryQuestionParser {
         String factKey = item == null ? null : ITEM_KEYWORDS.get(item);
         String itemLabel = item == null ? "자기주식 취득예정" : item;
         return new TreasuryQuestion(corpName, factKey, itemLabel);
-    }
-
-    private static String longestMatch(String text, List<String> candidates) {
-        String best = null;
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank() && text.contains(candidate)
-                    && (best == null || candidate.length() > best.length())) {
-                best = candidate;
-            }
-        }
-        return best;
     }
 }

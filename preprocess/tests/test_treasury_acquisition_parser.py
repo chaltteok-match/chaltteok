@@ -7,7 +7,6 @@ import pytest
 
 from chaltteok_etl.common import DisclosureDocument, DocGroup, ManifestFileFormat
 from chaltteok_etl.material.treasury_acquisition import (
-    TREASURY_ACQUISITION_DOCUMENT_ACODE,
     parse_treasury_stock_acquisition,
 )
 
@@ -85,6 +84,27 @@ def test_maps_labels_without_known_acode(tmp_path: Path) -> None:
     assert by_key["treasury_planned_common_amount"].normalized_value == "10000000000"
 
 
+def test_extracts_acq_ostk_acodes(tmp_path: Path) -> None:
+    source = _write(
+        tmp_path,
+        "<BODY><TABLE><TBODY>"
+        '<TR><TD>1. 취득예정주식(주)</TD><TD>보통주식</TD>'
+        '<TE ACODE="ACQ_OSTK">50,144,628</TE></TR>'
+        '<TR><TD>1. 취득예정주식(주)</TD><TD>기타주식</TD>'
+        '<TE ACODE="ACQ_ESTK">6,912,036</TE></TR>'
+        '<TR><TD>2. 취득예정금액(원)</TD><TD>보통주식</TD>'
+        '<TE ACODE="ACQ_OSTK_PRC">2,682,737,598,000</TE></TR>'
+        "</TBODY></TABLE></BODY>",
+        acode="11332",
+        name="주요사항보고서(자기주식 취득 결정)",
+    )
+    result = parse_treasury_stock_acquisition(source, make_document())
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+    assert by_key["treasury_planned_common_shares"].normalized_value == "50144628"
+    assert by_key["treasury_planned_common_amount"].normalized_value == "2682737598000"
+    assert all("기타" not in fact.label for fact in result.extracted_facts)
+
+
 def test_rejects_other_major_forms(tmp_path: Path) -> None:
     source = _write(
         tmp_path,
@@ -92,7 +112,7 @@ def test_rejects_other_major_forms(tmp_path: Path) -> None:
         acode="11306",
         name="주요사항보고서(유상증자결정)",
     )
-    with pytest.raises(ValueError, match=TREASURY_ACQUISITION_DOCUMENT_ACODE):
+    with pytest.raises(ValueError, match="자기주식취득결정 서식"):
         parse_treasury_stock_acquisition(source, make_document())
 
 

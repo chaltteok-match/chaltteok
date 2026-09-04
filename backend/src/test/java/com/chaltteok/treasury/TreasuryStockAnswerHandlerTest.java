@@ -1,13 +1,16 @@
 package com.chaltteok.treasury;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.CorpIdentity;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import java.time.LocalDate;
@@ -31,19 +34,24 @@ class TreasuryStockAnswerHandlerTest {
     @Mock
     private ExtractedFactRepository factRepository;
 
+    @Mock
+    private CorpIdentityRepository corpIdentityRepository;
+
     private TreasuryStockAnswerHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new TreasuryStockAnswerHandler(documentRepository, factRepository);
-        when(documentRepository.findDistinctCorpNamesByDocGroupAndDocSubtype(
-                DocGroup.MAJOR, "자기주식취득결정"))
-                .thenReturn(List.of("삼성전자"));
+        handler = new TreasuryStockAnswerHandler(
+                documentRepository, factRepository, corpIdentityRepository);
+        when(corpIdentityRepository.findByDocGroupAndDocSubtype(DocGroup.MAJOR, "자기주식취득결정"))
+                .thenReturn(List.of(
+                        new CorpIdentity("삼성전자", "삼성전자", "005930", "00126380")));
     }
 
     @Test
     void supportsAcquisitionNotDisposalOrTrust() {
         assertThat(handler.supports(QUESTION)).isTrue();
+        assertThat(handler.supports("005930이 공시한 자기주식취득결정 취득예정금액은?")).isTrue();
         assertThat(handler.supports("삼성전자 자기주식 처분 규모는?")).isFalse();
         assertThat(handler.supports("삼성전자 자기주식취득신탁계약 규모는?")).isFalse();
         assertThat(handler.supports("한화에어로스페이스 유상증자 신주 수는?")).isFalse();
@@ -79,16 +87,39 @@ class TreasuryStockAnswerHandlerTest {
         assertThat(result.unavailableReason()).contains("공시일");
     }
 
+    @Test
+    void prefersCorrectionOnSameDate() {
+        DisclosureDocumentEntity original = document("major_20250301000001", false);
+        DisclosureDocumentEntity correction = document("major_20250301000002", true);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()))
+                .thenReturn(List.of(original, correction));
+        when(factRepository.findByDocumentDocId("major_20250301000002"))
+                .thenReturn(List.of(
+                        fact(correction, TreasuryQuestionParser.AMOUNT_FACT_KEY, "취득예정금액",
+                                "60,000,000,000", "60000000000", "KRW", "원")));
+
+        AnswerHandlerResult result = handler.handle("Q-TS", QUESTION);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences().getFirst().evidenceText()).contains("60,000,000,000");
+        assertThat(result.processSummary()).contains("major_20250301000002");
+    }
+
     private static DisclosureDocumentEntity document() {
+        return document("major_20250301000001", false);
+    }
+
+    private static DisclosureDocumentEntity document(String docId, boolean correction) {
         DisclosureDocumentEntity entity = new DisclosureDocumentEntity();
-        entity.setDocId("major_20250301000001");
+        entity.setDocId(docId);
         entity.setCorpName("삼성전자");
         entity.setReportNm("주요사항보고서(자기주식취득결정)");
-        entity.setRceptNo("20250301000001");
+        entity.setRceptNo(docId.substring("major_".length()));
         entity.setRceptDt(REPORT_DATE);
         entity.setDocGroup(DocGroup.MAJOR);
         entity.setDocSubtype("자기주식취득결정");
-        entity.setCorrection(false);
+        entity.setCorrection(correction);
         return entity;
     }
 

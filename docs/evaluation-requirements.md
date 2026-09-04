@@ -230,3 +230,8 @@ TPM은 `input token + maxTokens`로 계산되므로 상한을 낮추면 한도�
 - 출력 평균 143토큰 · 입력 최대 1,696토큰
 - 같은 질문 재호출 시 출력이 최대 1.6배까지 흔들림
 - → 최댓값의 두 배인 **768**로 정함. 건당 TPM이 최악 2,720 → 2,464로 줄어든다
+
+기본값은 `HcxProperties`와 `application.yml` 두 곳에 있고 실제로 뜨는 값은 yml이 정한다.
+어긋나도 스프링 컨텍스트로는 잡히지 않는다. `src/test/resources/application.yml`이 운영 설정을
+가려서 테스트가 운영 yml을 아예 읽지 못하기 때문이다. `HcxConfigurationTest`가 파일을 직접
+읽어 둘을 묶어 둔다.

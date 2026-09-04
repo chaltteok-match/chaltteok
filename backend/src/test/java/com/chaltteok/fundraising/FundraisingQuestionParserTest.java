@@ -61,6 +61,54 @@ class FundraisingQuestionParserTest {
     }
 
     @Test
+    void excludesOnlyPurposesAttachedToExcludeWhenIncludeIsAlsoPresent() {
+        FundraisingQuestion parsed = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 시설자금을 포함하고 타법인 증권취득을 제외한 총액은?",
+                CORPS);
+        assertThat(parsed.isTotal()).isTrue();
+        assertThat(parsed.excludedFactKeys())
+                .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
+        assertThat(parsed.itemLabel()).contains("타법인").contains("제외");
+        assertThat(parsed.itemLabel()).doesNotContain("시설자금");
+    }
+
+    @Test
+    void excludesPurposeBeforeIncludeWhenWordingIsReversed() {
+        FundraisingQuestion parsed = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 타법인 증권취득을 빼고 시설자금을 포함한 총액은?",
+                CORPS);
+        assertThat(parsed.excludedFactKeys())
+                .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
+    }
+
+    @Test
+    void excludesConjoinedPurposesUsingTheFollowingVerdict() {
+        FundraisingQuestion bothExcluded = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 시설자금과 운영자금을 제외한 총액은?", CORPS);
+        assertThat(bothExcluded.excludedFactKeys()).containsExactlyInAnyOrder(
+                FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                FundraisingAnswerHandler.OPERATING_FACT_KEY);
+
+        FundraisingQuestion andExcluded = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 시설자금 및 타법인 증권취득을 제외한 총액은?", CORPS);
+        assertThat(andExcluded.excludedFactKeys()).containsExactlyInAnyOrder(
+                FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
+
+        FundraisingQuestion includeThenExclude = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 시설자금을 포함하고 타법인 증권취득을 제외한 총액은?",
+                CORPS);
+        assertThat(includeThenExclude.excludedFactKeys())
+                .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
+
+        FundraisingQuestion reversedInclude = FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자의 타법인 증권취득을 제외하고 시설자금은 포함한 총액은?",
+                CORPS);
+        assertThat(reversedInclude.excludedFactKeys())
+                .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
+    }
+
+    @Test
     void treatsCorrectionWordingAsHistory() {
         FundraisingQuestion parsed = FundraisingQuestionParser.parse(
                 "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자 시설자금은 정정 후 어떻게 바뀌었나?",

@@ -118,8 +118,21 @@ export HCX_API_KEY
 | `HCX_COMPLETIONS_PATH` | `/chat/completions` | Chat Completions 경로 |
 | `HCX_MODEL` | `HCX-005` | 호출할 모델 |
 | `HCX_TEMPERATURE` | `0.1` | 생성 다양성 |
-| `HCX_MAX_TOKENS` | `1024` | 최대 출력 토큰 수 |
+| `HCX_MAX_TOKENS` | `768` | 최대 출력 토큰 수. 아래 「출력 길이 측정」 참조 |
 | `HCX_TIMEOUT_SECONDS` | `30` | 연결·응답 제한 시간 |
+| `HCX_RETRY_MAX_ATTEMPTS` | `3` | 한 질문에 부르는 최대 횟수(첫 호출 포함). `1`이면 재시도하지 않음 |
+| `HCX_RETRY_INITIAL_INTERVAL_MILLIS` | `1000` | 첫 재시도까지 대기 |
+| `HCX_RETRY_MULTIPLIER` | `2.0` | 대기 증가 배수 |
+| `HCX_RETRY_MAX_INTERVAL_MILLIS` | `8000` | 한 번에 기다리는 최대 시간 |
+| `HCX_RETRY_MAX_ELAPSED_SECONDS` | `120` | 재시도 대기에 쓸 수 있는 총 시간 |
+
+429·타임아웃·5xx는 지수 백오프로 다시 겁니다. 인증·설정 오류, 429가 아닌 4xx, 빈 응답은
+다시 걸어도 같은 결과라 즉시 실패합니다. 서버가 `Retry-After`를 주면 그 값을 따르되, 총 대기가
+`HCX_RETRY_MAX_ELAPSED_SECONDS`를 넘길 상황이면 기다리지 않고 실패합니다. 평가 서버 응답
+타임아웃 300초를 넘기지 않기 위해서입니다.
+
+재시도를 다 써도 실패하면 지금처럼 503으로 나갑니다. 근거를 찾았는데 문장만 못 만든 것을
+「답변 불가」로 내보내면 시스템 실패를 정상 답변으로 위장하는 것이라 그렇게 하지 않습니다.
 
 ### 자동 테스트
 
@@ -141,6 +154,42 @@ export HCX_API_KEY
 ./gradlew test --tests com.chaltteok.hcx.HcxLiveApiTest
 ./gradlew test --tests com.chaltteok.fundraising.FundraisingHcxLiveApiTest
 ```
+
+### 출력 길이 측정 — `HCX_MAX_TOKENS` 정하기
+
+CLOVA Studio TPM은 실제 소비가 아니라 `input token + maxTokens`로 계산됩니다. 답이 200토큰이어도
+`maxTokens=1024`면 1024를 쓴 것으로 셉니다. 낮출수록 429에 덜 닿지만 너무 낮추면 답이 잘리므로,
+바닥이 어딘지는 실제로 재야 압니다.
+
+적재된 로컬 DB가 있어야 합니다(진짜 근거로 프롬프트를 만듭니다). 질문 10개를 한 번씩 부릅니다.
+
+```bash
+./gradlew test --tests com.chaltteok.hcx.HcxMaxTokensLiveTest --info
+```
+
+출력 토큰의 최대·평균과, 그때 건당 TPM이 표로 나옵니다. 모델을 바꾸면 다시 재야 합니다.
+
+#### 2026-09-04 측정 결과 (HCX-005, 질문 11개)
+
+| | 입력 | 출력 |
+| --- | ---: | ---: |
+| 최대 | 1,696 | **377** |
+| 평균 | 741 | 143 |
+
+최댓값은 둘 다 **현대건설 `20230626800002`** 입니다. 코퍼스에서 정정 사슬이 가장 길어
+(14회 정정, 근거 15건) 답이 15단계를 나열합니다. 이보다 긴 사슬은 없습니다.
+
+같은 질문을 두 번 불렀을 때 출력이 최대 **1.6배**까지 흔들렸습니다(192 → 119, 64 → 115).
+잘린 답은 틀린 답이므로 최댓값의 두 배인 **768**로 둡니다.
+
+| `maxTokens` | 최악 건당 TPM | 평균 건당 TPM |
+| ---: | ---: | ---: |
+| 1024 (이전) | 2,720 | 1,765 |
+| **768** | **2,464** | **1,509** |
+| 512 | 2,208 | 1,253 |
+
+512는 측정 최댓값의 1.36배뿐이라 위 흔들림을 감당하지 못합니다.
+지분공시·자기주식 답변이 붙으면 다시 재는 것이 좋습니다.
 
 타임아웃·인증 실패는 `HcxClientException`으로 감싼 뒤 `/answer`에서 HTTP 503(`SERVICE_UNAVAILABLE`)으로 반환합니다. CI의 `FundraisingAnswerIT`는 HCX를 호출하지 않고 이 매핑과 대표 질문의 `retrieved_context`·`think_trace`를 확인합니다.
 

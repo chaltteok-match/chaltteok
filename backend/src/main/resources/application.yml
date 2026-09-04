@@ -36,7 +36,7 @@ hcx:
   api-key: ${HCX_API_KEY:}
   model: ${HCX_MODEL:HCX-005}
   temperature: ${HCX_TEMPERATURE:0.1}
-  max-tokens: ${HCX_MAX_TOKENS:1024}
+  max-tokens: ${HCX_MAX_TOKENS:768}
   timeout-seconds: ${HCX_TIMEOUT_SECONDS:30}
 
 # DB 접속 정보(url/username/password)는 여기에 두지 않습니다.

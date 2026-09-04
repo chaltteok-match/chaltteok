@@ -29,6 +29,8 @@ final class SpringAiHcxClient implements HcxClient {
                     || response.getResult().getOutput() == null
                     || response.getResult().getOutput().getText() == null
                     || response.getResult().getOutput().getText().isBlank()) {
+                // 여기까지 왔다는 것은 응답 본문을 이미 읽었다는 뜻이다. 모델이 빈 텍스트를
+                // 준 경우만 이 타입이다. 본문을 못 읽으면 아래 catch로 간다.
                 throw new HcxClientException(
                         HcxErrorType.INVALID_RESPONSE,
                         "HyperCLOVA X 응답에 답변 텍스트가 없습니다.");

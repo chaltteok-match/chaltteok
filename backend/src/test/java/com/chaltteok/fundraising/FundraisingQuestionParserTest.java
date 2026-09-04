@@ -114,4 +114,20 @@ class FundraisingQuestionParserTest {
         assertThat(FundraisingQuestionParser.parse("삼성전기의 유상증자결정", CORPS).corpName())
                 .isEqualTo("삼성전기");
     }
+
+    @Test
+    void readsNewSharesParValueAndIssuePrice() {
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 신주 수는?", CORPS).factKey())
+                .isEqualTo(FundraisingAnswerHandler.NEW_SHARES_FACT_KEY);
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자 액면가액은?", CORPS).factKey())
+                .isEqualTo(FundraisingAnswerHandler.PAR_VALUE_FACT_KEY);
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자 발행가액은?", CORPS).factKey())
+                .isEqualTo(FundraisingAnswerHandler.ISSUE_PRICE_FACT_KEY);
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스 유상증자 예정발행가는?", CORPS).factKey())
+                .isEqualTo(FundraisingAnswerHandler.PLANNED_ISSUE_PRICE_FACT_KEY);
+    }
 }

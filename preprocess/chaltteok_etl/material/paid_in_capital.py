@@ -57,6 +57,7 @@ ACODE_FACT_KEYS: dict[str, str] = {
     "BFR_CST_CNT": "fundraising_before_common_shares",
     "BFR_PST_CNT": "fundraising_before_other_class_shares",
     "CST_ISS_VAL": "fundraising_common_issue_price",
+    "PRE_CST_VAL": "fundraising_common_planned_issue_price",
     "PST_CNT": "fundraising_other_class_new_shares",
     "PST_ISS_VAL": "fundraising_other_class_issue_price",
     "AOI_BAS": "fundraising_articles_basis",

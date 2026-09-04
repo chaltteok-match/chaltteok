@@ -46,6 +46,29 @@ final class FundraisingQuestionParser {
                 .forEach(entry -> PURPOSE_KEYWORDS.put(entry.getKey(), entry.getValue()));
     }
 
+    private static final Map<String, String> ISSUANCE_KEYWORDS = new LinkedHashMap<>();
+
+    static {
+        Map<String, String> raw = Map.ofEntries(
+                Map.entry("예정발행가", FundraisingAnswerHandler.PLANNED_ISSUE_PRICE_FACT_KEY),
+                Map.entry("예정 발행가", FundraisingAnswerHandler.PLANNED_ISSUE_PRICE_FACT_KEY),
+                Map.entry("확정발행가", FundraisingAnswerHandler.ISSUE_PRICE_FACT_KEY),
+                Map.entry("확정 발행가", FundraisingAnswerHandler.ISSUE_PRICE_FACT_KEY),
+                Map.entry("발행가액", FundraisingAnswerHandler.ISSUE_PRICE_FACT_KEY),
+                Map.entry("발행가", FundraisingAnswerHandler.ISSUE_PRICE_FACT_KEY),
+                Map.entry("액면가액", FundraisingAnswerHandler.PAR_VALUE_FACT_KEY),
+                Map.entry("액면가", FundraisingAnswerHandler.PAR_VALUE_FACT_KEY),
+                Map.entry("신주의 종류와 수", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY),
+                Map.entry("신주 수", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY),
+                Map.entry("신주수", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY),
+                Map.entry("신주", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY)
+        );
+        raw.entrySet().stream()
+                .sorted(Comparator.comparingInt((Map.Entry<String, String> entry) -> entry.getKey().length())
+                        .reversed())
+                .forEach(entry -> ISSUANCE_KEYWORDS.put(entry.getKey(), entry.getValue()));
+    }
+
     private static final String[] TOTAL_MARKERS = {"총액", "총 조달", "합계"};
     /**
      * 값 하나가 아니라 바뀐 과정을 묻는지.
@@ -83,6 +106,14 @@ final class FundraisingQuestionParser {
         if (purpose != null) {
             return new FundraisingQuestion(
                     corpName, PURPOSE_KEYWORDS.get(purpose), purpose, Set.of(), history);
+        }
+        String issuance = ISSUANCE_KEYWORDS.keySet().stream()
+                .filter(text::contains)
+                .findFirst()
+                .orElse(null);
+        if (issuance != null) {
+            return new FundraisingQuestion(
+                    corpName, ISSUANCE_KEYWORDS.get(issuance), issuance, Set.of(), history);
         }
         return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계", Set.of(), history);
     }

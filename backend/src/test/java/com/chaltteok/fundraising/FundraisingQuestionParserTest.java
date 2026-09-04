@@ -50,10 +50,46 @@ class FundraisingQuestionParserTest {
         FundraisingQuestion included = FundraisingQuestionParser.parse(
                 "한화에어로스페이스 유상증자의 시설자금을 포함한 총 조달금액은?", CORPS);
         assertThat(included.isTotal()).isTrue();
+        assertThat(included.excludedFactKeys()).isEmpty();
 
         FundraisingQuestion excluded = FundraisingQuestionParser.parse(
                 "한화에어로스페이스 유상증자의 타법인 증권취득자금을 제외한 총액은?", CORPS);
         assertThat(excluded.isTotal()).isTrue();
+        assertThat(excluded.excludedFactKeys())
+                .containsExactly(FundraisingAnswerHandler.SECURITIES_ACQUISITION_FACT_KEY);
+        assertThat(excluded.itemLabel()).contains("제외");
+    }
+
+    @Test
+    void treatsCorrectionWordingAsHistory() {
+        FundraisingQuestion parsed = FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자 시설자금은 정정 후 어떻게 바뀌었나?",
+                CORPS);
+        assertThat(parsed.history()).isTrue();
+        assertThat(parsed.factKey()).isEqualTo(FundraisingAnswerHandler.FACILITY_FACT_KEY);
+    }
+
+    @Test
+    void treatsCorrectionAsSingleDocumentLabel() {
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 정정한 유상증자의 시설자금은?", CORPS).history())
+                .isFalse();
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 정정공시한 유상증자의 예정 자금 조달금액은?", CORPS)
+                .history())
+                .isFalse();
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 정정 전 시설자금은?", CORPS).history())
+                .isFalse();
+    }
+
+    @Test
+    void treatsChangeRecordWordingAsHistory() {
+        FundraisingQuestion parsed = FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 3월 20일 공시한 유상증자 예정 자금 조달금액이 변경된 내역은?",
+                CORPS);
+        assertThat(parsed.history()).isTrue();
+        assertThat(parsed.isTotal()).isTrue();
     }
 
     @Test

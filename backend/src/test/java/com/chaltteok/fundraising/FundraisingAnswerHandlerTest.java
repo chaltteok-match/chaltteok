@@ -457,6 +457,184 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.evidences().getFirst().evidenceText()).contains("100,000,000,000");
     }
 
+    @Test
+    void subtractsExcludedPurposeFromTotal() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(
+                        purposeFact(document, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                                "시설자금 (원)", "700,020,800,000", "700020800000"),
+                        amountFact(document, "1,600,000,000,000", "1600000000000")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 타법인 증권취득자금을 제외한 총액은?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("700,020,800,000");
+        assertThat(result.processSummary())
+                .contains("제외")
+                .contains("700,020,800,000원")
+                .doesNotContain("1,600,000,000,000원");
+    }
+
+    @Test
+    void tracesCorrectionHistoryAcrossDates() {
+        DisclosureDocumentEntity original = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                false
+        );
+        DisclosureDocumentEntity correction = hanwhaFundraisingDocument(
+                "major_20250415000001",
+                "20250415000001",
+                LocalDate.of(2025, 4, 15),
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(original, correction));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(amountFact(original, "800,000,000,000", "800000000000")));
+        when(factRepository.findByDocumentDocId("major_20250415000001"))
+                .thenReturn(List.of(amountFact(correction, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자 타법인 증권취득자금은 정정 후 어떻게 바뀌었나?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.processSummary())
+                .contains("정정 이력")
+                .contains("2025-04-08 원본 800000000000원")
+                .contains("2025-04-15 정정 1600000000000원");
+    }
+
+    @Test
+    void datedCorrectionWordingUsesSingleDocument() {
+        DisclosureDocumentEntity original = hanwhaFundraisingDocument(
+                "major_20250408000011",
+                "20250408000011",
+                REPORT_DATE,
+                false
+        );
+        DisclosureDocumentEntity correction = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(original, correction));
+        when(factRepository.findByDocumentDocId("major_20250408000011"))
+                .thenReturn(List.of(purposeFact(original, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "1,200,000,000,000", "1200000000000")));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(purposeFact(correction, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "700,020,800,000", "700020800000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 정정한 유상증자의 시설자금은?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("700,020,800,000");
+        assertThat(result.processSummary())
+                .contains("문서 major_20250408000012 선택")
+                .doesNotContain("정정 이력");
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtype(
+                anyString(), any(), anyString());
+    }
+
+    @Test
+    void historyKeepsOnlyAmountChangesAndSameDayCorrection() {
+        DisclosureDocumentEntity march20Original = hanwhaFundraisingDocument(
+                "major_20250320000001", "20250320000001", LocalDate.of(2025, 3, 20), false);
+        DisclosureDocumentEntity march20Correction = hanwhaFundraisingDocument(
+                "major_20250320000002", "20250320000002", LocalDate.of(2025, 3, 20), true);
+        DisclosureDocumentEntity march26 = hanwhaFundraisingDocument(
+                "major_20250326000001", "20250326000001", LocalDate.of(2025, 3, 26), true);
+        DisclosureDocumentEntity april8First = hanwhaFundraisingDocument(
+                "major_20250408000011", "20250408000011", REPORT_DATE, true);
+        DisclosureDocumentEntity april8Second = hanwhaFundraisingDocument(
+                "major_20250408000012", "20250408000012", REPORT_DATE, true);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(
+                        march20Original, march20Correction, march26, april8First, april8Second));
+        when(factRepository.findByDocumentDocId("major_20250320000001"))
+                .thenReturn(List.of(purposeFact(march20Original, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "1,200,000,000,000", "1200000000000")));
+        when(factRepository.findByDocumentDocId("major_20250320000002"))
+                .thenReturn(List.of(purposeFact(march20Correction, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "1,200,000,000,000", "1200000000000")));
+        when(factRepository.findByDocumentDocId("major_20250326000001"))
+                .thenReturn(List.of(purposeFact(march26, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "1,200,000,000,000", "1200000000000")));
+        when(factRepository.findByDocumentDocId("major_20250408000011"))
+                .thenReturn(List.of(purposeFact(april8First, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "700,020,800,000", "700020800000")));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(purposeFact(april8Second, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                        "시설자금 (원)", "700,020,800,000", "700020800000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스 유상증자 시설자금은 정정 후 어떻게 바뀌었나?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.processSummary())
+                .contains("2025-03-20 정정 1200000000000원")
+                .contains("2025-04-08 정정 700020800000원")
+                .doesNotContain("2025-03-26")
+                .doesNotContain("원본");
+    }
+
+    @Test
+    void historyKeepsFirstAndLastWhenAmountDidNotChange() {
+        DisclosureDocumentEntity original = hanwhaFundraisingDocument(
+                "major_20240905000001", "20240905000001", LocalDate.of(2024, 9, 5), false);
+        DisclosureDocumentEntity correction = hanwhaFundraisingDocument(
+                "major_20240930000001", "20240930000001", LocalDate.of(2024, 9, 30), true);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(original, correction));
+        when(factRepository.findByDocumentDocId("major_20240905000001"))
+                .thenReturn(List.of(amountFact(original, "200,000,000,000", "200000000000")));
+        when(factRepository.findByDocumentDocId("major_20240930000001"))
+                .thenReturn(List.of(amountFact(correction, "200,000,000,000", "200000000000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스 유상증자 타법인 증권취득자금은 어떻게 바뀌었나?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.processSummary())
+                .contains("2024-09-05 원본 200000000000원")
+                .contains("2024-09-30 정정 200000000000원");
+    }
+
     private static DisclosureDocumentEntity hanwhaFundraisingDocument(
             String docId,
             String rceptNo,

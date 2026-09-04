@@ -4,16 +4,22 @@ import com.chaltteok.answer.CorpNameResolver;
 
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * 질문에서 기업·목적·총액 여부를 읽는다.
+ * 질문에서 기업·목적·총액·제외·정정 이력 여부를 읽는다.
  *
  * <p>{@code 총액}·{@code 총 조달금액}·{@code 합계}가 있으면 합계 질문으로 본다.
  * 다만 목적 표현 바로 뒤에 마커가 붙으면({@code 시설자금 총액}, {@code 시설자금 합계})
  * 그 목적만 본다. {@code 시설자금을 포함한 총 조달금액}처럼 목적과 마커 사이에
  * 다른 말이 끼면 합계다.
+ *
+ * <p>{@code 제외한}·{@code 빼고}와 목적·총액 표지가 함께 있으면 그 목적을 뺀 합계다.
+ * {@code 어떻게 바뀌었나}·{@code 변경된 내역}처럼 바뀐 과정을 물으면 이력 질문이다.
+ * {@code 정정한}·{@code 정정공시}만 있으면 그 공시 한 건을 고르는 말로 본다.
  */
 final class FundraisingQuestionParser {
 
@@ -41,6 +47,13 @@ final class FundraisingQuestionParser {
     }
 
     private static final String[] TOTAL_MARKERS = {"총액", "총 조달", "합계"};
+    /**
+     * 값 하나가 아니라 바뀐 과정을 묻는지.
+     * {@code 정정}은 공시 한 건을 가리키는 말로도 쓰이므로 빼 둔다.
+     * {@code 변경}은 그런 용법이 드물어 이력으로 본다.
+     */
+    private static final Pattern HISTORY = Pattern.compile(
+            "변경|바뀌|바뀐|바뀔|달라진|이력|추이|변화|어떻게\\s*변");
 
     private FundraisingQuestionParser() {
     }
@@ -48,22 +61,59 @@ final class FundraisingQuestionParser {
     static FundraisingQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
         String corpName = corpNames.resolve(text);
+        boolean history = HISTORY.matcher(text).find();
         String purposeAttachedToMarker = purposeImmediatelyFollowedByTotalMarker(text);
         if (purposeAttachedToMarker != null) {
             return new FundraisingQuestion(
-                    corpName, PURPOSE_KEYWORDS.get(purposeAttachedToMarker), purposeAttachedToMarker);
+                    corpName,
+                    PURPOSE_KEYWORDS.get(purposeAttachedToMarker),
+                    purposeAttachedToMarker,
+                    Set.of(),
+                    history);
         }
         if (asksForTotal(text)) {
-            return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+            Set<String> excluded = asksToExclude(text) ? purposesIn(text) : Set.of();
+            return new FundraisingQuestion(
+                    corpName, null, totalLabel(excluded), excluded, history);
         }
         String purpose = PURPOSE_KEYWORDS.keySet().stream()
                 .filter(text::contains)
                 .findFirst()
                 .orElse(null);
         if (purpose != null) {
-            return new FundraisingQuestion(corpName, PURPOSE_KEYWORDS.get(purpose), purpose);
+            return new FundraisingQuestion(
+                    corpName, PURPOSE_KEYWORDS.get(purpose), purpose, Set.of(), history);
         }
-        return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+        return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계", Set.of(), history);
+    }
+
+    private static boolean asksToExclude(String text) {
+        return text.contains("제외") || text.contains("빼고");
+    }
+
+    private static Set<String> purposesIn(String text) {
+        Set<String> keys = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : PURPOSE_KEYWORDS.entrySet()) {
+            if (text.contains(entry.getKey())) {
+                keys.add(entry.getValue());
+            }
+        }
+        return keys;
+    }
+
+    private static String totalLabel(Set<String> excluded) {
+        if (excluded.isEmpty()) {
+            return "자금 사용 목적 합계";
+        }
+        // 같은 fact에 짧은 키워드와 긴 키워드가 함께 있으면 긴 쪽만 쓴다.
+        Set<String> labels = new LinkedHashSet<>();
+        Set<String> seenKeys = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : PURPOSE_KEYWORDS.entrySet()) {
+            if (excluded.contains(entry.getValue()) && seenKeys.add(entry.getValue())) {
+                labels.add(entry.getKey());
+            }
+        }
+        return "자금 사용 목적 합계(" + String.join(", ", labels) + " 제외)";
     }
 
     private static String purposeImmediatelyFollowedByTotalMarker(String text) {
@@ -98,4 +148,5 @@ final class FundraisingQuestionParser {
         }
         return false;
     }
+
 }

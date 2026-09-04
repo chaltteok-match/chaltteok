@@ -191,6 +191,87 @@ def test_영업이익_라벨_변형과_음수_기호를_처리한다(tmp_path):
     assert values[2023] == "-11526297000000"
 
 
+def test_대괄호로_감싼_라벨을_인식한다(tmp_path):
+    """이마트·삼성SDI·에코프로비엠·두산로보틱스는 '[매출액]'처럼 대괄호로 감싼다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("[매출액]", "29,472,248", "29,332,414", "24,932,681"),
+                row_xml("[영업이익]", "-46,935", "135,652", "316,791"),
+                row_xml("[연결당기순손실]", "-187,466", "1,007,726", "1,589,074"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "revenue")}[2024] == "29472248000000"
+    assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "operating_profit")}[2024] == "-46935000000"
+    assert {f.period_end.year: f.normalized_value for f in facts_by_key(result, "net_income")}[2024] == "-187466000000"
+
+
+def test_대괄호를_벗긴_뒤에도_전각_로마자_접두를_벗긴다(tmp_path):
+    """'[Ⅰ.영업이익]'처럼 두 표기가 겹쳐도 인식한다. 코퍼스에는 없지만 규칙이 겹칠 수 있다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("[Ⅰ.영업이익]", "1,000", "900", "800"),))
+    )
+    result = parse(tmp_path, body)
+    assert facts_by_key(result, "operating_profit")
+
+
+def test_전각_로마자_접두를_벗긴다(tmp_path):
+    """신한지주는 'Ⅰ.영업이익'처럼 전각 로마자를 쓴다. ASCII I가 아니다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("Ⅰ.영업이익", "1,000", "2,000", "3,000"),
+                row_xml("Ⅵ.당기순이익", "4,000", "5,000", "6,000"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert facts_by_key(result, "operating_profit")
+    assert facts_by_key(result, "net_income")
+
+
+def test_대괄호를_벗기다가_괄호_라벨을_깨뜨리지_않는다(tmp_path):
+    """'영업이익(손실)'의 닫는 괄호를 지우면 매칭이 깨진다."""
+    body = (
+        "<P>나. 요약별도재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("영업이익(손실)", "12,361,034", "△11,526,297", "25,319,329"),
+                row_xml("당기순이익(손실)", "100", "200", "300"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert facts_by_key(result, "operating_profit")
+    assert facts_by_key(result, "net_income")
+
+
+def test_대괄호를_벗겨도_대상이_아닌_항목은_그대로_거른다(tmp_path):
+    """'[유동자산]'은 벗겨도 '유동자산'이라 화이트리스트에 없다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            rows=(
+                row_xml("[유동자산]", "1", "2", "3"),
+                row_xml("[법인세차감전계속영업순손실]", "4", "5", "6"),
+                row_xml("[자산총계]", "7", "8", "9"),
+            )
+        )
+    )
+    result = parse(tmp_path, body)
+    assert {f.fact_key for f in result.extracted_facts} == {"total_assets"}
+
+
 def test_연결과_별도를_구분한다(tmp_path):
     body = CONSOLIDATED_BODY + (
         "<P>나. 요약별도재무정보</P>"
@@ -223,6 +304,96 @@ def test_소제목_어순이_반대여도_인식한다(tmp_path):
     }
     assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
     assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_소제목이_재무제표라고_써도_인식한다(tmp_path):
+    """현대건설·엘에스일렉트릭은 '재무정보'가 아니라 '재무제표'라고 쓴다."""
+    body = (
+        "<P>가. 연결 요약재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>나. 별도 요약재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_기준을_괄호_안에_적어도_인식한다(tmp_path):
+    """현대자동차는 '(1) 요약재무정보(연결재무제표 기준)'처럼 괄호 안에 적는다."""
+    body = (
+        "<P>(1) 요약재무정보(연결재무제표 기준)</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>(2) 요약재무정보(별도재무제표 기준)</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_기준을_괄호로_앞뒤에_떼어_적어도_인식한다(tmp_path):
+    """세아베스틸지주는 '(연결)요약재무정보', 한전기술은 '요약재무정보 ( 연결 )'로 쓴다."""
+    body = (
+        "<P>가. (연결)요약재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>나 . 요약재무정보 ( 별도 )</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_요약이_없는_소제목도_번호가_붙으면_인식한다(tmp_path):
+    """현대제철은 '가. 연결재무제표'라고만 쓴다. 번호를 앵커로 삼는다."""
+    body = (
+        "<P>가. 연결재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>나. 별도재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_본문_속_재무제표_언급을_소제목으로_보지_않는다(tmp_path):
+    """'당사는 연결재무제표를 작성합니다'는 소제목이 아니다. 번호가 앞에 없다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>당사는 별도재무제표를 함께 작성하고 있습니다.</P>"
+        + summary_table(rows=(row_xml("영업이익", "100", "90", "80"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {fact.scope for fact in facts_by_key(result, "operating_profit")}
+    assert scopes == {Scope.CONSOLIDATED}
 
 
 def test_기준을_밝히지_않은_소제목은_앞_기준을_물려받지_않는다(tmp_path):

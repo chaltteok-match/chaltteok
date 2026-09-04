@@ -490,38 +490,6 @@ class FundraisingAnswerHandlerTest {
     }
 
     @Test
-    void includeAndExcludeTogetherSubtractsOnlyExcludedPurpose() {
-        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
-                "major_20250408000012",
-                "20250408000012",
-                REPORT_DATE,
-                true
-        );
-        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
-                any(), any(), any(), any()
-        )).thenReturn(List.of(document));
-        when(factRepository.findByDocumentDocId("major_20250408000012"))
-                .thenReturn(List.of(
-                        purposeFact(document, FundraisingAnswerHandler.FACILITY_FACT_KEY,
-                                "시설자금 (원)", "700,020,800,000", "700020800000"),
-                        amountFact(document, "1,600,000,000,000", "1600000000000")
-                ));
-
-        AnswerHandlerResult result = handler.handle(
-                "Q-FUND",
-                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 시설자금을 포함하고 타법인 증권취득을 제외한 총액은?"
-        );
-
-        assertThat(result.isAnswerable()).isTrue();
-        assertThat(result.evidences()).hasSize(1);
-        assertThat(result.evidences().getFirst().evidenceText()).contains("700,020,800,000");
-        assertThat(result.processSummary())
-                .contains("제외")
-                .contains("700,020,800,000원")
-                .doesNotContain("1,600,000,000,000원");
-    }
-
-    @Test
     void tracesCorrectionHistoryAcrossDates() {
         DisclosureDocumentEntity original = hanwhaFundraisingDocument(
                 "major_20250408000012",

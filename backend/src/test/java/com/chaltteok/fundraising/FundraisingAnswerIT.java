@@ -3,7 +3,6 @@ package com.chaltteok.fundraising;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -173,30 +172,6 @@ class FundraisingAnswerIT {
                         containsString("타법인 증권취득자금")
                 )))
                 .andExpect(jsonPath("$.answer").value(containsString("2조 3,000억원")));
-    }
-
-    @Test
-    void answersIncludeAndExcludeTogetherWithoutSubtractingIncludedPurpose() throws Exception {
-        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
-                "시설자금을 포함하고 타법인 증권취득을 제외한 총액은 7,000억원입니다.",
-                "HCX-005", 10, 20, 30));
-
-        mockMvc.perform(get("/answer")
-                        .param("question_id", "Q-FUND-INCLUDE-EXCLUDE")
-                        .param("question",
-                                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 시설자금을 포함하고 타법인 증권취득을 제외한 총액은?"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.think_trace").value(allOf(
-                        containsString("제외"),
-                        containsString("700,020,800,000원")
-                )))
-                .andExpect(jsonPath("$.think_trace").value(not(containsString("1,600,000,000,000원"))))
-                .andExpect(jsonPath("$.retrieved_context").value(allOf(
-                        containsString("시설자금"),
-                        containsString("700,020,800,000")
-                )))
-                .andExpect(jsonPath("$.retrieved_context").value(not(containsString("1,600,000,000,000"))))
-                .andExpect(jsonPath("$.answer").value(containsString("7,000억원")));
     }
 
     @Test

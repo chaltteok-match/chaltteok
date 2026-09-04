@@ -33,6 +33,8 @@ class HcxPromptFactoryTest {
                 .contains("목적별 금액을 총 조달금액처럼 답하지 마세요")
                 .contains("목적별 금액을 더한 값도")
                 .contains("총 조달금액이라고 쓰지 마세요");
+        assertThat(prompt.systemPrompt())
+                .contains("자기주식 취득예정 수량·금액과 유상증자 신주·발행가를 혼동하지 마세요");
         assertThat(prompt.userPrompt())
                 .contains(QUESTION)
                 .contains(PROCESS)

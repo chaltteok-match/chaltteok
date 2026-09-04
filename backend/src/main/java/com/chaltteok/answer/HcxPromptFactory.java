@@ -25,6 +25,7 @@ public class HcxPromptFactory {
             거래소공시의 '최근매출액'은 공시한 기업의 매출액입니다.
             계약상대방의 매출액은 별도 항목이므로 공시 기업의 매출액으로 답하지 마세요.
             정정공시는 앞선 공시를 고친 것입니다. 정정 이력을 답할 때는 공시일과 값을 시간순으로 함께 쓰세요.
+            자기주식 취득예정 수량·금액과 유상증자 신주·발행가를 혼동하지 마세요.
             """;
 
     public HcxPrompt create(String question, String retrievedContext, String processSummary) {

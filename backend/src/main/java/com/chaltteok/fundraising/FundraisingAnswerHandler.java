@@ -108,7 +108,7 @@ public class FundraisingAnswerHandler implements AnswerHandler {
         }
 
         LocalDate reportDate = resolveReportDate(question);
-        // 공시일이 있어도 '어떻게 바뀌었나'면 이력이다. '정정한 유상증자'만으로는 단건이다.
+        // 공시일이 있어도 '변경된 내역'·'어떻게 바뀌었나'면 이력이다. '정정한 유상증자'만으로는 단건이다.
         if (parsed.history()) {
             return handleHistory(parsed, reportDate);
         }

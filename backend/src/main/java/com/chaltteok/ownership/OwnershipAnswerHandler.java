@@ -32,6 +32,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>공시일만 있으면 그날 문서를 특정하고, 같은 날 정정본이 있으면 정정본만 남긴다.
  * {@code 어떻게 바뀌었나}처럼 과정을 물으면 같은 보고자의 신규·변동·변경을 시간순으로 잇는다.
+ * 보유목적을 물으면 목적 문장이 바뀐 단계를 남긴다.
  */
 @Component
 @Order(OwnershipAnswerHandler.HANDLER_ORDER)
@@ -138,10 +139,11 @@ public class OwnershipAnswerHandler implements AnswerHandler {
     }
 
     /**
-     * 같은 보고자의 신규·변동·변경을 시간순으로 모아 주식 수·지분율이 바뀐 과정을 근거로 남긴다.
+     * 같은 보고자의 신규·변동·변경을 시간순으로 모아 바뀐 과정을 근거로 남긴다.
      *
      * <p>공시일이 있으면 그 날이 들어 있는 사건만 쓰고, 없으면 사건이 하나일 때만 답한다.
      * 보고자가 다르거나 신규가 다시 나오면 새 사건이다. 추측해서 묶지 않는다.
+     * 보유목적을 물으면 목적 문장이 바뀐 단계를 남기고, 지분율·주식 수는 수량 기준으로 접는다.
      */
     private AnswerHandlerResult handleHistory(OwnershipQuestion parsed, LocalDate reportDate) {
         String searchSummary = "기업명=" + parsed.corpName()
@@ -198,7 +200,8 @@ public class OwnershipAnswerHandler implements AnswerHandler {
                         step.document(), step.holder(), step.kind(), step.quantityKey(), matched));
             }
         }
-        List<OwnershipHoldingHistory.Step> collapsed = OwnershipHoldingHistory.collapseHistory(alongChain);
+        List<OwnershipHoldingHistory.Step> collapsed = OwnershipHoldingHistory.collapseHistory(
+                alongChain, parsed.asksForPurposeHistory());
         List<RetrievedEvidence> evidences = new ArrayList<>();
         List<String> labels = new ArrayList<>();
         for (OwnershipHoldingHistory.Step step : collapsed) {
@@ -206,9 +209,12 @@ public class OwnershipAnswerHandler implements AnswerHandler {
             evidences.addAll(step.facts().stream()
                     .map(fact -> toEvidence(document, fact))
                     .toList());
+            String valueLabel = parsed.asksForPurposeHistory()
+                    ? OwnershipHoldingHistory.purposeKey(step.facts())
+                    : step.quantityKey();
             labels.add(document.getRceptDt()
                     + (document.isCorrection() ? " 정정" : " " + reportKindLabel(step.kind()))
-                    + " " + step.quantityKey());
+                    + " " + valueLabel);
         }
         if (evidences.isEmpty()) {
             return AnswerHandlerResult.unavailable(

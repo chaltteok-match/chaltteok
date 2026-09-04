@@ -17,6 +17,7 @@ import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -251,6 +252,77 @@ class OwnershipAnswerHandlerTest {
                 .contains("2025-01-15 정정");
     }
 
+    @Test
+    void answersPurposeOnASingleFilingDate() {
+        DisclosureDocumentEntity document = document("holding_20250115000001", false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("삼성전자"), eq(DocGroup.HOLDING), eq("대량보유상황보고서"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(List.of(
+                        fact(document, "ownership_holder", "대표보고자", "국민연금공단", null, null),
+                        fact(document, "ownership_purpose", "보유목적", "단순투자", null, null)
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 보유 목적은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("단순투자");
+    }
+
+    @Test
+    void purposeHistoryKeepsPurposeChangeWhenQuantityDidNotChange() {
+        DisclosureDocumentEntity original = document("holding_20241201000001", LocalDate.of(2024, 12, 1), false);
+        DisclosureDocumentEntity changed = document("holding_20250115000001", REPORT_DATE, false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(original, changed));
+        when(factRepository.findByDocumentDocId("holding_20241201000001"))
+                .thenReturn(holdingFacts(original, "국민연금공단", "신규", "50000000", "8.25", "단순투자"));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(holdingFacts(changed, "국민연금공단", "변경", "50000000", "8.25", "경영권 영향"));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자 대량보유상황보고서 보유목적은 어떻게 바뀌었나?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("단순투자");
+        assertThat(result.evidences().getLast().evidenceText()).contains("경영권 영향");
+        assertThat(result.processSummary()).contains("단순투자").contains("경영권영향");
+    }
+
+    @Test
+    void quantityHistoryStillFoldsPurposeOnlyChange() {
+        DisclosureDocumentEntity first = document("holding_20241201000001", LocalDate.of(2024, 12, 1), false);
+        DisclosureDocumentEntity middle = document("holding_20250101000001", LocalDate.of(2025, 1, 1), false);
+        DisclosureDocumentEntity last = document("holding_20250115000001", REPORT_DATE, false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(first, middle, last));
+        when(factRepository.findByDocumentDocId("holding_20241201000001"))
+                .thenReturn(holdingFacts(first, "국민연금공단", "신규", "50000000", "8.25", "단순투자"));
+        when(factRepository.findByDocumentDocId("holding_20250101000001"))
+                .thenReturn(holdingFacts(middle, "국민연금공단", "변경", "50000000", "8.25", "경영권 영향"));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(holdingFacts(last, "국민연금공단", "변경", "50000000", "8.25", "경영권 영향"));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자 대량보유상황보고서 지분율은 어떻게 바뀌었나?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.processSummary())
+                .contains("2024-12-01 신규")
+                .contains("2025-01-15 변경")
+                .doesNotContain("2025-01-01");
+    }
+
     private static DisclosureDocumentEntity document(String docId, boolean correction) {
         return document(docId, REPORT_DATE, correction);
     }
@@ -275,12 +347,27 @@ class OwnershipAnswerHandlerTest {
             String shares,
             String ratio
     ) {
-        return List.of(
+        return holdingFacts(document, holder, reportType, shares, ratio, null);
+    }
+
+    private static List<ExtractedFactEntity> holdingFacts(
+            DisclosureDocumentEntity document,
+            String holder,
+            String reportType,
+            String shares,
+            String ratio,
+            String purpose
+    ) {
+        List<ExtractedFactEntity> facts = new ArrayList<>(List.of(
                 fact(document, "ownership_holder", "대표보고자", holder, null, null),
                 fact(document, "ownership_report_type", "보고구분", reportType, null, null),
                 fact(document, "ownership_shares", "보유주식등의 수 (주)", shares, shares, "share"),
                 fact(document, "ownership_ratio", "보유비율 (%)", ratio, ratio, "%")
-        );
+        ));
+        if (purpose != null) {
+            facts.add(fact(document, "ownership_purpose", "보유목적", purpose, null, null));
+        }
+        return facts;
     }
 
     private static ExtractedFactEntity fact(

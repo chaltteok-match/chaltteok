@@ -28,6 +28,7 @@ from .exchange.corrections import link_corrections
 from .exchange.krx_forms import parse_exchange_disclosure
 from .material.paid_in_capital import parse_paid_in_capital_increase
 from .material.treasury_acquisition import parse_treasury_stock_acquisition
+from .ownership.large_holding import parse_large_holding
 from .periodic.summary_financials import (
     UnsupportedDocument,
     parse_summary_financials,
@@ -49,6 +50,12 @@ def _parse_major(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessR
     source_xml = resolve_main_xml(resolve_source_dir(corpus_root, manifest_row), manifest_row)
     parser = _MAJOR_PARSERS[resolve_doc_subtype(manifest_row)]
     return parser(source_xml, document)
+
+
+def _parse_holding(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
+    document = build_document(manifest_row)
+    source_xml = resolve_main_xml(resolve_source_dir(corpus_root, manifest_row), manifest_row)
+    return parse_large_holding(source_xml, document)
 
 
 def _parse_exchange(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
@@ -97,7 +104,10 @@ PARSERS: dict[str, ParserEntry] = {
         supports=lambda row: True,
         link=link_corrections,
     ),
-    # "holding": 지분공시 파서가 생기면 여기 등록한다.
+    "holding": ParserEntry(
+        parse=_parse_holding,
+        supports=lambda row: "대량보유" in (resolve_doc_subtype(row) or row.get("report_nm") or ""),
+    ),
 }
 
 

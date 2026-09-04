@@ -1,5 +1,7 @@
 package com.chaltteok.financial;
 
+import com.chaltteok.answer.CorpNameResolver;
+
 import com.chaltteok.disclosure.model.enums.Scope;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -60,10 +62,10 @@ final class FinancialQuestionParser {
     private FinancialQuestionParser() {
     }
 
-    static FinancialQuestion parse(String question, List<String> knownCorpNames) {
+    static FinancialQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
 
-        String corpName = longestMatch(text, knownCorpNames);
+        String corpName = corpNames.resolve(text);
         // 가장 긴 표현이 혼동 표현이면 항목을 만들지 않는다.
         // '주당순이익'에 당기순이익을, '총자산회전율'에 자산총계를 답하지 않기 위해서다.
         String matched = ALL_TERMS.stream().filter(text::contains).findFirst().orElse(null);
@@ -86,17 +88,6 @@ final class FinancialQuestionParser {
                 corpName, targetYear, baseYear, factKey, itemLabel, scope, separate || consolidated);
     }
 
-    /** 여러 법인명이 포함되면 가장 긴 이름을 고른다. 예: 'NAVER'와 'NAVER클라우드'. */
-    private static String longestMatch(String text, List<String> candidates) {
-        String best = null;
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank() && text.contains(candidate)
-                    && (best == null || candidate.length() > best.length())) {
-                best = candidate;
-            }
-        }
-        return best;
-    }
 
     private static List<Integer> years(String text) {
         List<Integer> years = new ArrayList<>();

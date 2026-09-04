@@ -1,5 +1,7 @@
 package com.chaltteok.financial;
 
+import com.chaltteok.answer.CorpNameResolver;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.chaltteok.disclosure.model.enums.Scope;
@@ -8,7 +10,8 @@ import org.junit.jupiter.api.Test;
 
 class FinancialQuestionParserTest {
 
-    private static final List<String> CORPS = List.of("삼성전자", "삼성전기", "NAVER", "한화에어로스페이스");
+    private static final CorpNameResolver CORPS =
+            CorpNameResolver.ofNames(List.of("삼성전자", "삼성전기", "NAVER", "한화에어로스페이스"));
 
     private FinancialQuestion parse(String question) {
         return FinancialQuestionParser.parse(question, CORPS);

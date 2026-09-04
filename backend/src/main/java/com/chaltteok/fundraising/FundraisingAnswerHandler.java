@@ -1,6 +1,8 @@
 package com.chaltteok.fundraising;
 
 import com.chaltteok.answer.AnswerHandler;
+import com.chaltteok.answer.CorpNameResolver;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.KoreanAmountFormatter;
 import com.chaltteok.answer.RetrievedEvidence;
@@ -71,13 +73,16 @@ public class FundraisingAnswerHandler implements AnswerHandler {
 
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
+    private final CorpIdentityRepository corpIdentityRepository;
 
     public FundraisingAnswerHandler(
             DisclosureDocumentRepository documentRepository,
-            ExtractedFactRepository factRepository
+            ExtractedFactRepository factRepository,
+            CorpIdentityRepository corpIdentityRepository
     ) {
         this.documentRepository = documentRepository;
         this.factRepository = factRepository;
+        this.corpIdentityRepository = corpIdentityRepository;
     }
 
     @Override
@@ -176,8 +181,8 @@ public class FundraisingAnswerHandler implements AnswerHandler {
     private FundraisingQuestion parse(String question) {
         return FundraisingQuestionParser.parse(
                 question,
-                documentRepository.findDistinctCorpNamesByDocGroupAndDocSubtype(
-                        DocGroup.MAJOR, DOC_SUBTYPE));
+                CorpNameResolver.of(corpIdentityRepository.findByDocGroupAndDocSubtype(
+                        DocGroup.MAJOR, DOC_SUBTYPE)));
     }
 
     /**

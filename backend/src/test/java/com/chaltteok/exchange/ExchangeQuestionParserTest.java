@@ -1,5 +1,7 @@
 package com.chaltteok.exchange;
 
+import com.chaltteok.answer.CorpNameResolver;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
@@ -8,7 +10,8 @@ import org.junit.jupiter.api.Test;
 
 class ExchangeQuestionParserTest {
 
-    private static final List<String> CORP_NAMES = List.of("삼성전자", "대우건설", "HMM");
+    private static final CorpNameResolver CORP_NAMES =
+            CorpNameResolver.ofNames(List.of("삼성전자", "대우건설", "HMM"));
 
     private static ExchangeQuestion parse(String question) {
         return ExchangeQuestionParser.parse(question, CORP_NAMES);

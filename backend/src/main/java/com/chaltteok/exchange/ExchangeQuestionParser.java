@@ -1,5 +1,7 @@
 package com.chaltteok.exchange;
 
+import com.chaltteok.answer.CorpNameResolver;
+
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -103,14 +105,14 @@ final class ExchangeQuestionParser {
     private ExchangeQuestionParser() {
     }
 
-    static ExchangeQuestion parse(String question, List<String> knownCorpNames) {
+    static ExchangeQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
 
         ExchangeTopic topic = resolveTopic(text);
         String factKey = topic == null ? null : resolveFactKey(text, topic);
 
         return new ExchangeQuestion(
-                longestMatch(text, knownCorpNames),
+                corpNames.resolve(text),
                 reportDate(text),
                 year(text),
                 topic,
@@ -165,17 +167,5 @@ final class ExchangeQuestionParser {
             }
         }
         return years.size() == 1 ? years.get(0) : null;
-    }
-
-    /** 여러 법인명이 포함되면 가장 긴 이름을 고른다. */
-    private static String longestMatch(String text, List<String> candidates) {
-        String best = null;
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank() && text.contains(candidate)
-                    && (best == null || candidate.length() > best.length())) {
-                best = candidate;
-            }
-        }
-        return best;
     }
 }

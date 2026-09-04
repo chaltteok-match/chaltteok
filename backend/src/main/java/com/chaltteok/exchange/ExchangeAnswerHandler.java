@@ -1,6 +1,8 @@
 package com.chaltteok.exchange;
 
 import com.chaltteok.answer.AnswerHandler;
+import com.chaltteok.answer.CorpNameResolver;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.KoreanAmountFormatter;
 import com.chaltteok.answer.KoreanParticle;
@@ -83,15 +85,18 @@ public class ExchangeAnswerHandler implements AnswerHandler {
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
     private final DisclosureRelationRepository relationRepository;
+    private final CorpIdentityRepository corpIdentityRepository;
 
     public ExchangeAnswerHandler(
             DisclosureDocumentRepository documentRepository,
             ExtractedFactRepository factRepository,
-            DisclosureRelationRepository relationRepository
+            DisclosureRelationRepository relationRepository,
+            CorpIdentityRepository corpIdentityRepository
     ) {
         this.documentRepository = documentRepository;
         this.factRepository = factRepository;
         this.relationRepository = relationRepository;
+        this.corpIdentityRepository = corpIdentityRepository;
     }
 
     @Override
@@ -504,7 +509,7 @@ public class ExchangeAnswerHandler implements AnswerHandler {
 
     private ExchangeQuestion parse(String question) {
         return ExchangeQuestionParser.parse(
-                question, documentRepository.findDistinctCorpNamesByDocGroup(DocGroup.EXCHANGE));
+                question, CorpNameResolver.of(corpIdentityRepository.findByDocGroup(DocGroup.EXCHANGE)));
     }
 
     private static String missingPartsOf(ExchangeQuestion parsed) {

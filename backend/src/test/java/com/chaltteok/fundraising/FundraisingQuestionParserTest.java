@@ -1,5 +1,7 @@
 package com.chaltteok.fundraising;
 
+import com.chaltteok.answer.CorpNameResolver;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -7,7 +9,8 @@ import org.junit.jupiter.api.Test;
 
 class FundraisingQuestionParserTest {
 
-    private static final List<String> CORPS = List.of("한화에어로스페이스", "삼성SDI", "삼성전기");
+    private static final CorpNameResolver CORPS =
+            CorpNameResolver.ofNames(List.of("한화에어로스페이스", "삼성SDI", "삼성전기"));
 
     @Test
     void readsSecuritiesAcquisitionPurpose() {

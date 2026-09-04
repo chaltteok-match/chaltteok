@@ -1,6 +1,8 @@
 package com.chaltteok.financial;
 
 import com.chaltteok.answer.AnswerHandler;
+import com.chaltteok.answer.CorpNameResolver;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.KoreanAmountFormatter;
 import com.chaltteok.answer.KoreanParticle;
@@ -39,13 +41,16 @@ public class FinancialAnswerHandler implements AnswerHandler {
 
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
+    private final CorpIdentityRepository corpIdentityRepository;
 
     public FinancialAnswerHandler(
             DisclosureDocumentRepository documentRepository,
-            ExtractedFactRepository factRepository
+            ExtractedFactRepository factRepository,
+            CorpIdentityRepository corpIdentityRepository
     ) {
         this.documentRepository = documentRepository;
         this.factRepository = factRepository;
+        this.corpIdentityRepository = corpIdentityRepository;
     }
 
     @Override
@@ -330,7 +335,7 @@ public class FinancialAnswerHandler implements AnswerHandler {
 
     private FinancialQuestion parse(String question) {
         return FinancialQuestionParser.parse(
-                question, documentRepository.findDistinctCorpNamesByDocGroup(DocGroup.PERIODIC));
+                question, CorpNameResolver.of(corpIdentityRepository.findByDocGroup(DocGroup.PERIODIC)));
     }
 
     private static String missingPartsOf(FinancialQuestion parsed) {

@@ -27,6 +27,7 @@ from .common.models import PreprocessResult
 from .exchange.corrections import link_corrections
 from .exchange.krx_forms import parse_exchange_disclosure
 from .material.paid_in_capital import parse_paid_in_capital_increase
+from .material.treasury_acquisition import parse_treasury_stock_acquisition
 from .periodic.summary_financials import (
     UnsupportedDocument,
     parse_summary_financials,
@@ -36,12 +37,18 @@ Parser = Callable[[Path, dict[str, Any]], PreprocessResult]
 Supports = Callable[[dict[str, Any]], bool]
 Linker = Callable[[list[PreprocessResult]], list[PreprocessResult]]
 
+_MAJOR_PARSERS = {
+    "유상증자결정": parse_paid_in_capital_increase,
+    "자기주식취득결정": parse_treasury_stock_acquisition,
+}
+
 
 def _parse_major(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
     """주요사항보고서 파서는 원문 경로와 문서를 직접 받으므로 여기서 맞춰 준다."""
     document = build_document(manifest_row)
     source_xml = resolve_main_xml(resolve_source_dir(corpus_root, manifest_row), manifest_row)
-    return parse_paid_in_capital_increase(source_xml, document)
+    parser = _MAJOR_PARSERS[resolve_doc_subtype(manifest_row)]
+    return parser(source_xml, document)
 
 
 def _parse_exchange(corpus_root: Path, manifest_row: dict[str, Any]) -> PreprocessResult:
@@ -81,8 +88,8 @@ PARSERS: dict[str, ParserEntry] = {
     ),
     "major": ParserEntry(
         parse=_parse_major,
-        # 유상증자결정 서식만 파서가 있다. 나머지 서식은 아직 대상이 아니다.
-        supports=lambda row: resolve_doc_subtype(row) == "유상증자결정",
+        # 유상증자결정·자기주식취득결정만 파서가 있다. 나머지 서식은 아직 대상이 아니다.
+        supports=lambda row: resolve_doc_subtype(row) in _MAJOR_PARSERS,
     ),
     "exchange": ParserEntry(
         parse=_parse_exchange,

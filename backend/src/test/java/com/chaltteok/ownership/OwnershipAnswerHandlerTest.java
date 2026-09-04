@@ -6,9 +6,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.CorpIdentity;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import java.time.LocalDate;
@@ -32,19 +34,25 @@ class OwnershipAnswerHandlerTest {
     @Mock
     private ExtractedFactRepository factRepository;
 
+    @Mock
+    private CorpIdentityRepository corpIdentityRepository;
+
     private OwnershipAnswerHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new OwnershipAnswerHandler(documentRepository, factRepository);
-        when(documentRepository.findDistinctCorpNamesByDocGroup(DocGroup.HOLDING))
-                .thenReturn(List.of("삼성전자"));
+        handler = new OwnershipAnswerHandler(
+                documentRepository, factRepository, corpIdentityRepository);
+        when(corpIdentityRepository.findByDocGroupAndDocSubtype(DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(
+                        new CorpIdentity("삼성전자", "삼성전자", "005930", "00126380")));
     }
 
     @Test
     void supportsHoldingQuestionsForLoadedCompany() {
         assertThat(handler.supports(QUESTION)).isTrue();
         assertThat(handler.supports("삼성전자 지분공시 보고자는?")).isTrue();
+        assertThat(handler.supports("005930이 공시한 대량보유상황보고서 지분율은?")).isTrue();
         assertThat(handler.supports("한화에어로스페이스 유상증자 지분율은?")).isFalse();
         assertThat(handler.supports("예시전자 대량보유상황보고서 지분율은?")).isFalse();
     }

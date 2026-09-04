@@ -2,10 +2,12 @@ package com.chaltteok.ownership;
 
 import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.CorpNameResolver;
 import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
+import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import java.time.DateTimeException;
@@ -49,13 +51,16 @@ public class OwnershipAnswerHandler implements AnswerHandler {
 
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
+    private final CorpIdentityRepository corpIdentityRepository;
 
     public OwnershipAnswerHandler(
             DisclosureDocumentRepository documentRepository,
-            ExtractedFactRepository factRepository
+            ExtractedFactRepository factRepository,
+            CorpIdentityRepository corpIdentityRepository
     ) {
         this.documentRepository = documentRepository;
         this.factRepository = factRepository;
+        this.corpIdentityRepository = corpIdentityRepository;
     }
 
     @Override
@@ -172,7 +177,8 @@ public class OwnershipAnswerHandler implements AnswerHandler {
     private OwnershipQuestion parse(String question) {
         return OwnershipQuestionParser.parse(
                 question,
-                documentRepository.findDistinctCorpNamesByDocGroup(DocGroup.HOLDING));
+                CorpNameResolver.of(corpIdentityRepository.findByDocGroupAndDocSubtype(
+                        DocGroup.HOLDING, DOC_SUBTYPE)));
     }
 
     private static LocalDate resolveReportDate(String question) {

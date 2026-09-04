@@ -1,8 +1,8 @@
 package com.chaltteok.ownership;
 
+import com.chaltteok.answer.CorpNameResolver;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -43,9 +43,9 @@ final class OwnershipQuestionParser {
     private OwnershipQuestionParser() {
     }
 
-    static OwnershipQuestion parse(String question, List<String> knownCorpNames) {
+    static OwnershipQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
-        String corpName = longestMatch(text, knownCorpNames);
+        String corpName = corpNames.resolve(text);
         String item = ITEM_KEYWORDS.keySet().stream()
                 .filter(text::contains)
                 .findFirst()
@@ -53,16 +53,5 @@ final class OwnershipQuestionParser {
         String factKey = item == null ? null : ITEM_KEYWORDS.get(item);
         String itemLabel = item == null ? "대량보유 현황" : item;
         return new OwnershipQuestion(corpName, factKey, itemLabel);
-    }
-
-    private static String longestMatch(String text, List<String> candidates) {
-        String best = null;
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank() && text.contains(candidate)
-                    && (best == null || candidate.length() > best.length())) {
-                best = candidate;
-            }
-        }
-        return best;
     }
 }

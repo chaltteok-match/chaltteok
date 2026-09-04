@@ -70,6 +70,20 @@ class FundraisingQuestionParserTest {
     }
 
     @Test
+    void treatsCorrectionAsSingleDocumentLabel() {
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 정정한 유상증자의 시설자금은?", CORPS).history())
+                .isFalse();
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 정정공시한 유상증자의 예정 자금 조달금액은?", CORPS)
+                .history())
+                .isFalse();
+        assertThat(FundraisingQuestionParser.parse(
+                "한화에어로스페이스가 2025년 4월 8일 정정 전 시설자금은?", CORPS).history())
+                .isFalse();
+    }
+
+    @Test
     void treatsMarkerRightAfterPurposeAsThatPurpose() {
         FundraisingQuestion facilityTotal = FundraisingQuestionParser.parse("시설자금 총액은?", CORPS);
         assertThat(facilityTotal.isTotal()).isFalse();

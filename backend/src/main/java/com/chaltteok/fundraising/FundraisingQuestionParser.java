@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  * 다른 말이 끼면 합계다.
  *
  * <p>{@code 제외한}·{@code 빼고}와 목적·총액 표지가 함께 있으면 그 목적을 뺀 합계다.
- * {@code 정정}·{@code 바뀐}처럼 변경 과정을 물으면 이력 질문이다.
+ * {@code 어떻게 바뀌었나}처럼 변경 과정을 물으면 이력 질문이다.
+ * {@code 정정한}·{@code 정정공시}만 있으면 그 공시 한 건을 고르는 말로 본다.
  */
 final class FundraisingQuestionParser {
 
@@ -46,8 +47,9 @@ final class FundraisingQuestionParser {
     }
 
     private static final String[] TOTAL_MARKERS = {"총액", "총 조달", "합계"};
+    /** 값 하나가 아니라 바뀐 과정을 묻는지. {@code 정정}만으로는 단건이다. */
     private static final Pattern HISTORY = Pattern.compile(
-            "정정|변경|바뀌|바뀐|바뀔|달라진|수정|이력|추이|변화|어떻게\\s*변");
+            "바뀌|바뀐|바뀔|달라진|이력|추이|변화|어떻게\\s*변");
 
     private FundraisingQuestionParser() {
     }

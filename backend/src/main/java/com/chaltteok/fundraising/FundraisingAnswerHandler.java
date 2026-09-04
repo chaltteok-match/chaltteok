@@ -42,8 +42,9 @@ import org.springframework.stereotype.Component;
  * 같은 날짜에 정정본이 있으면 원본은 대체된 것으로 보고 정정본만 남긴다.
  * 남은 문서끼리 금액이 서로 다르면 답변 불가로 둔다.
  *
- * <p>{@code 제외한} 합계는 그 목적을 빼고 더한다. 정정 이력은 같은 증자 건의
- * 원본·정정본을 날짜 순으로 모아 금액이 바뀐 과정을 근거로 남긴다.
+ * <p>{@code 제외한} 합계는 그 목적을 빼고 더한다. 정정 이력은 바뀐 과정을 물을 때만
+ * 타고, 같은 증자 건의 원본·정정본을 날짜 순으로 모아 금액이 바뀐 지점만 남긴다.
+ * {@code 정정한 유상증자}처럼 공시 한 건을 가리키면 이력으로 풀지 않는다.
  */
 @Component
 @Order(20)
@@ -106,11 +107,12 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             );
         }
 
+        LocalDate reportDate = resolveReportDate(question);
+        // 공시일이 있어도 '어떻게 바뀌었나'면 이력이다. '정정한 유상증자'만으로는 단건이다.
         if (parsed.history()) {
-            return handleHistory(parsed, question);
+            return handleHistory(parsed, reportDate);
         }
 
-        LocalDate reportDate = resolveReportDate(question);
         if (reportDate == null) {
             return AnswerHandlerResult.unavailable(
                     "기업명=" + parsed.corpName() + ", 공시유형=major, 서식=" + DOC_SUBTYPE + " 검색",
@@ -169,8 +171,9 @@ public class FundraisingAnswerHandler implements AnswerHandler {
      *
      * <p>전처리에 정정 사슬이 없어, 원본(비정정)이 다른 날에 다시 나오면 새 건으로 본다.
      * 공시일이 있으면 그 날이 들어 있는 건만 쓰고, 없으면 건이 하나일 때만 답한다.
+     * 같은 날 정정본이 있으면 원본은 빼고, 금액이 그대로인 단계는 접는다.
      */
-    private AnswerHandlerResult handleHistory(FundraisingQuestion parsed, String question) {
+    private AnswerHandlerResult handleHistory(FundraisingQuestion parsed, LocalDate reportDate) {
         String searchSummary = "기업명=" + parsed.corpName()
                 + ", 공시유형=major, 서식=" + DOC_SUBTYPE + " 정정 이력 검색";
         List<DisclosureDocumentEntity> all =
@@ -185,7 +188,6 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                         .thenComparing(DisclosureDocumentEntity::getRceptNo, Comparator.nullsLast(String::compareTo)))
                 .toList();
         List<List<DisclosureDocumentEntity>> chains = offeringChains(sorted);
-        LocalDate reportDate = resolveReportDate(question);
         List<DisclosureDocumentEntity> chain = selectChain(chains, reportDate);
         if (chain == null) {
             return AnswerHandlerResult.unavailable(
@@ -202,18 +204,22 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             );
         }
 
-        List<RetrievedEvidence> evidences = new ArrayList<>();
-        List<String> steps = new ArrayList<>();
+        List<Candidate> alongChain = new ArrayList<>();
         for (DisclosureDocumentEntity document : chain) {
             List<Candidate> one = candidatesOf(List.of(document), parsed);
-            if (one.isEmpty()) {
-                continue;
+            if (!one.isEmpty()) {
+                alongChain.add(one.getFirst());
             }
-            Candidate candidate = one.getFirst();
+        }
+        List<Candidate> steps = collapseHistory(alongChain);
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (Candidate candidate : steps) {
+            DisclosureDocumentEntity document = candidate.document();
             evidences.addAll(candidate.facts().stream()
                     .map(fact -> toEvidence(document, fact))
                     .toList());
-            steps.add(document.getRceptDt()
+            labels.add(document.getRceptDt()
                     + (document.isCorrection() ? " 정정" : " 원본")
                     + " " + candidate.amountKey() + "원");
         }
@@ -228,8 +234,40 @@ public class FundraisingAnswerHandler implements AnswerHandler {
         }
         return AnswerHandlerResult.of(
                 evidences,
-                searchSummary + " → " + parsed.itemLabel() + " " + String.join(" → ", steps)
+                searchSummary + " → " + parsed.itemLabel() + " " + String.join(" → ", labels)
         );
+    }
+
+    /**
+     * 같은 날 정정본이 있으면 원본은 빼고, 금액이 그대로인 단계는 접는다.
+     * 값이 끝까지 같으면 처음과 마지막만 남겨 정정은 있었으나 금액은 같았음을 보인다.
+     */
+    static List<Candidate> collapseHistory(List<Candidate> alongChain) {
+        List<Candidate> sameDay = new ArrayList<>();
+        int index = 0;
+        while (index < alongChain.size()) {
+            LocalDate date = alongChain.get(index).document().getRceptDt();
+            List<Candidate> day = new ArrayList<>();
+            while (index < alongChain.size()
+                    && Objects.equals(alongChain.get(index).document().getRceptDt(), date)) {
+                day.add(alongChain.get(index));
+                index++;
+            }
+            sameDay.addAll(preferCorrections(day));
+        }
+        List<Candidate> changed = new ArrayList<>();
+        String previous = null;
+        for (Candidate candidate : sameDay) {
+            if (candidate.amountKey().equals(previous)) {
+                continue;
+            }
+            previous = candidate.amountKey();
+            changed.add(candidate);
+        }
+        if (changed.size() >= 2 || sameDay.size() < 2) {
+            return changed;
+        }
+        return List.of(sameDay.getFirst(), sameDay.getLast());
     }
 
     private List<Candidate> candidatesOf(

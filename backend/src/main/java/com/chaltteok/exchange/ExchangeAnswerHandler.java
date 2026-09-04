@@ -2,6 +2,7 @@ package com.chaltteok.exchange;
 
 import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.CorpNameResolver;
+import com.chaltteok.answer.DisclosureTypeMarkers;
 import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.KoreanAmountFormatter;
@@ -102,6 +103,14 @@ public class ExchangeAnswerHandler implements AnswerHandler {
     @Override
     @Transactional(readOnly = true)
     public boolean supports(String question) {
+        // 다른 유형을 못 박은 질문에서 물러난다. 주제 키워드에 `시설투자`·`투자금액`이 있어서
+        // `유상증자로 조달한 자금 중 시설투자에 쓰는 금액`을 순위만으로 가져가고 있었다.
+        if (DisclosureTypeMarkers.mentionsAnyOf(question,
+                DisclosureTypeMarkers.FUNDRAISING,
+                DisclosureTypeMarkers.TREASURY,
+                DisclosureTypeMarkers.OWNERSHIP)) {
+            return false;
+        }
         ExchangeQuestion parsed = parse(question);
         return parsed.corpName() != null && parsed.topic() != null;
     }

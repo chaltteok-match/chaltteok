@@ -457,6 +457,73 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.evidences().getFirst().evidenceText()).contains("100,000,000,000");
     }
 
+    @Test
+    void subtractsExcludedPurposeFromTotal() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(
+                        purposeFact(document, FundraisingAnswerHandler.FACILITY_FACT_KEY,
+                                "시설자금 (원)", "700,020,800,000", "700020800000"),
+                        amountFact(document, "1,600,000,000,000", "1600000000000")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 타법인 증권취득자금을 제외한 총액은?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("700,020,800,000");
+        assertThat(result.processSummary())
+                .contains("제외")
+                .contains("700,020,800,000원")
+                .doesNotContain("1,600,000,000,000원");
+    }
+
+    @Test
+    void tracesCorrectionHistoryAcrossDates() {
+        DisclosureDocumentEntity original = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                false
+        );
+        DisclosureDocumentEntity correction = hanwhaFundraisingDocument(
+                "major_20250415000001",
+                "20250415000001",
+                LocalDate.of(2025, 4, 15),
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(original, correction));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(amountFact(original, "800,000,000,000", "800000000000")));
+        when(factRepository.findByDocumentDocId("major_20250415000001"))
+                .thenReturn(List.of(amountFact(correction, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자 타법인 증권취득자금은 정정 후 어떻게 바뀌었나?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.processSummary())
+                .contains("정정 이력")
+                .contains("2025-04-08 원본 800000000000원")
+                .contains("2025-04-15 정정 1600000000000원");
+    }
+
     private static DisclosureDocumentEntity hanwhaFundraisingDocument(
             String docId,
             String rceptNo,

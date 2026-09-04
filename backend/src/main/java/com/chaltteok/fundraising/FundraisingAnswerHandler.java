@@ -41,6 +41,9 @@ import org.springframework.stereotype.Component;
  * <p>질문의 공시일({@code yyyy년 M월 d일})로 {@code rcept_dt}를 좁힌다.
  * 같은 날짜에 정정본이 있으면 원본은 대체된 것으로 보고 정정본만 남긴다.
  * 남은 문서끼리 금액이 서로 다르면 답변 불가로 둔다.
+ *
+ * <p>{@code 제외한} 합계는 그 목적을 빼고 더한다. 정정 이력은 같은 증자 건의
+ * 원본·정정본을 날짜 순으로 모아 금액이 바뀐 과정을 근거로 남긴다.
  */
 @Component
 @Order(20)
@@ -103,6 +106,10 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             );
         }
 
+        if (parsed.history()) {
+            return handleHistory(parsed, question);
+        }
+
         LocalDate reportDate = resolveReportDate(question);
         if (reportDate == null) {
             return AnswerHandlerResult.unavailable(
@@ -128,32 +135,11 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             );
         }
 
-        List<Candidate> candidates = new ArrayList<>();
-        for (DisclosureDocumentEntity document : documents) {
-            List<ExtractedFactEntity> purposes = factRepository.findByDocumentDocId(document.getDocId()).stream()
-                    .filter(fact -> PURPOSE_FACT_KEYS.contains(fact.getFactKey()))
-                    .filter(fact -> fact.getNormalizedValue() != null && !fact.getNormalizedValue().isBlank())
-                    .toList();
-            if (parsed.isTotal()) {
-                if (!purposes.isEmpty()) {
-                    candidates.add(new Candidate(document, purposes));
-                }
-            } else {
-                List<ExtractedFactEntity> matched = purposes.stream()
-                        .filter(fact -> parsed.factKey().equals(fact.getFactKey()))
-                        .toList();
-                if (!matched.isEmpty()) {
-                    candidates.add(new Candidate(document, matched));
-                }
-            }
-        }
-
+        List<Candidate> candidates = candidatesOf(documents, parsed);
         if (candidates.isEmpty()) {
             return AnswerHandlerResult.unavailable(
                     searchSummary + " → 문서 " + documents.size() + "건",
-                    parsed.isTotal()
-                            ? "검색된 공시에서 합산할 목적별 자금 금액을 찾지 못했습니다"
-                            : "검색된 공시에서 " + parsed.itemLabel() + " 금액을 찾지 못했습니다"
+                    emptyAmountReason(parsed)
             );
         }
 
@@ -176,6 +162,159 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                 .map(fact -> toEvidence(selected.document(), fact))
                 .toList();
         return AnswerHandlerResult.of(evidences, searchSummary + " → " + selected.summary(parsed));
+    }
+
+    /**
+     * 같은 증자 건의 원본·정정본을 시간순으로 모아 금액이 바뀐 과정을 근거로 남긴다.
+     *
+     * <p>전처리에 정정 사슬이 없어, 원본(비정정)이 다른 날에 다시 나오면 새 건으로 본다.
+     * 공시일이 있으면 그 날이 들어 있는 건만 쓰고, 없으면 건이 하나일 때만 답한다.
+     */
+    private AnswerHandlerResult handleHistory(FundraisingQuestion parsed, String question) {
+        String searchSummary = "기업명=" + parsed.corpName()
+                + ", 공시유형=major, 서식=" + DOC_SUBTYPE + " 정정 이력 검색";
+        List<DisclosureDocumentEntity> all =
+                documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                        parsed.corpName(), DocGroup.MAJOR, DOC_SUBTYPE);
+        if (all.isEmpty()) {
+            return AnswerHandlerResult.unavailable(searchSummary, "해당 기업의 유상증자 공시를 찾지 못했습니다");
+        }
+        List<DisclosureDocumentEntity> sorted = all.stream()
+                .sorted(Comparator
+                        .comparing(DisclosureDocumentEntity::getRceptDt, Comparator.nullsLast(LocalDate::compareTo))
+                        .thenComparing(DisclosureDocumentEntity::getRceptNo, Comparator.nullsLast(String::compareTo)))
+                .toList();
+        List<List<DisclosureDocumentEntity>> chains = offeringChains(sorted);
+        LocalDate reportDate = resolveReportDate(question);
+        List<DisclosureDocumentEntity> chain = selectChain(chains, reportDate);
+        if (chain == null) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 유상증자 " + chains.size() + "건",
+                    reportDate == null
+                            ? "여러 차례 유상증자가 있어 공시일을 특정하지 못했습니다"
+                            : reportDate + " 공시가 들어 있는 유상증자 정정 이력을 찾지 못했습니다"
+            );
+        }
+        if (chain.size() < 2) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 정정 이력 없음",
+                    "찾은 유상증자 공시에 정정 이력이 없습니다"
+            );
+        }
+
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        List<String> steps = new ArrayList<>();
+        for (DisclosureDocumentEntity document : chain) {
+            List<Candidate> one = candidatesOf(List.of(document), parsed);
+            if (one.isEmpty()) {
+                continue;
+            }
+            Candidate candidate = one.getFirst();
+            evidences.addAll(candidate.facts().stream()
+                    .map(fact -> toEvidence(document, fact))
+                    .toList());
+            steps.add(document.getRceptDt()
+                    + (document.isCorrection() ? " 정정" : " 원본")
+                    + " " + candidate.amountKey() + "원");
+        }
+        if (evidences.isEmpty()) {
+            return AnswerHandlerResult.unavailable(searchSummary, emptyAmountReason(parsed));
+        }
+        if (steps.size() < 2) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 정정 이력 없음",
+                    "찾은 유상증자 공시에 정정 이력이 없습니다"
+            );
+        }
+        return AnswerHandlerResult.of(
+                evidences,
+                searchSummary + " → " + parsed.itemLabel() + " " + String.join(" → ", steps)
+        );
+    }
+
+    private List<Candidate> candidatesOf(
+            List<DisclosureDocumentEntity> documents,
+            FundraisingQuestion parsed
+    ) {
+        List<Candidate> candidates = new ArrayList<>();
+        for (DisclosureDocumentEntity document : documents) {
+            List<ExtractedFactEntity> purposes = factRepository.findByDocumentDocId(document.getDocId()).stream()
+                    .filter(fact -> PURPOSE_FACT_KEYS.contains(fact.getFactKey()))
+                    .filter(fact -> fact.getNormalizedValue() != null && !fact.getNormalizedValue().isBlank())
+                    .toList();
+            List<ExtractedFactEntity> matched = relevantFacts(purposes, parsed);
+            if (!matched.isEmpty()) {
+                candidates.add(new Candidate(document, matched));
+            }
+        }
+        return candidates;
+    }
+
+    private static List<ExtractedFactEntity> relevantFacts(
+            List<ExtractedFactEntity> purposes,
+            FundraisingQuestion parsed
+    ) {
+        if (!parsed.isTotal()) {
+            return purposes.stream()
+                    .filter(fact -> parsed.factKey().equals(fact.getFactKey()))
+                    .toList();
+        }
+        if (!parsed.excludesPurposes()) {
+            return purposes;
+        }
+        return purposes.stream()
+                .filter(fact -> !parsed.excludedFactKeys().contains(fact.getFactKey()))
+                .toList();
+    }
+
+    private static String emptyAmountReason(FundraisingQuestion parsed) {
+        if (parsed.excludesPurposes()) {
+            return "검색된 공시에서 제외하고 남을 목적별 자금 금액을 찾지 못했습니다";
+        }
+        return parsed.isTotal()
+                ? "검색된 공시에서 합산할 목적별 자금 금액을 찾지 못했습니다"
+                : "검색된 공시에서 " + parsed.itemLabel() + " 금액을 찾지 못했습니다";
+    }
+
+    /**
+     * 비정정이 다른 날에 나오면 새 증자 건으로 본다. 같은 날 원본·정정과
+     * 이후 날짜의 정정본은 한 건으로 묶는다.
+     */
+    static List<List<DisclosureDocumentEntity>> offeringChains(List<DisclosureDocumentEntity> sorted) {
+        List<List<DisclosureDocumentEntity>> chains = new ArrayList<>();
+        List<DisclosureDocumentEntity> current = new ArrayList<>();
+        for (DisclosureDocumentEntity document : sorted) {
+            if (current.isEmpty()) {
+                current.add(document);
+                continue;
+            }
+            DisclosureDocumentEntity last = current.getLast();
+            boolean sameDay = Objects.equals(document.getRceptDt(), last.getRceptDt());
+            if (sameDay || document.isCorrection()) {
+                current.add(document);
+            } else {
+                chains.add(current);
+                current = new ArrayList<>();
+                current.add(document);
+            }
+        }
+        if (!current.isEmpty()) {
+            chains.add(current);
+        }
+        return chains;
+    }
+
+    private static List<DisclosureDocumentEntity> selectChain(
+            List<List<DisclosureDocumentEntity>> chains,
+            LocalDate reportDate
+    ) {
+        if (reportDate != null) {
+            return chains.stream()
+                    .filter(chain -> chain.stream().anyMatch(doc -> reportDate.equals(doc.getRceptDt())))
+                    .findFirst()
+                    .orElse(null);
+        }
+        return chains.size() == 1 ? chains.getFirst() : null;
     }
 
     private FundraisingQuestion parse(String question) {
@@ -274,7 +413,7 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                     .map(fact -> fact.getFactKey() + "=" + rawAmount(fact))
                     .collect(Collectors.joining(" + "));
             String total = sum().toPlainString();
-            return "문서 " + docId + " 선택 → 자금 사용 목적 합계 " + parts + " = " + total
+            return "문서 " + docId + " 선택 → " + parsed.itemLabel() + " " + parts + " = " + total
                     + "원 (" + KoreanAmountFormatter.format(total) + ")";
         }
 

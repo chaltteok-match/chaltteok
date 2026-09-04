@@ -1,19 +1,23 @@
 package com.chaltteok.fundraising;
 
-import com.chaltteok.answer.CorpNameResolver;
-
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * 질문에서 기업·목적·총액 여부를 읽는다.
+ * 질문에서 기업·목적·총액·제외·정정 이력 여부를 읽는다.
  *
  * <p>{@code 총액}·{@code 총 조달금액}·{@code 합계}가 있으면 합계 질문으로 본다.
  * 다만 목적 표현 바로 뒤에 마커가 붙으면({@code 시설자금 총액}, {@code 시설자금 합계})
  * 그 목적만 본다. {@code 시설자금을 포함한 총 조달금액}처럼 목적과 마커 사이에
  * 다른 말이 끼면 합계다.
+ *
+ * <p>{@code 제외한}·{@code 빼고}와 목적·총액 표지가 함께 있으면 그 목적을 뺀 합계다.
+ * {@code 정정}·{@code 바뀐}처럼 변경 과정을 물으면 이력 질문이다.
  */
 final class FundraisingQuestionParser {
 
@@ -41,29 +45,68 @@ final class FundraisingQuestionParser {
     }
 
     private static final String[] TOTAL_MARKERS = {"총액", "총 조달", "합계"};
+    private static final Pattern HISTORY = Pattern.compile(
+            "정정|변경|바뀌|바뀐|바뀔|달라진|수정|이력|추이|변화|어떻게\\s*변");
 
     private FundraisingQuestionParser() {
     }
 
-    static FundraisingQuestion parse(String question, CorpNameResolver corpNames) {
+    static FundraisingQuestion parse(String question, List<String> knownCorpNames) {
         String text = question == null ? "" : question;
-        String corpName = corpNames.resolve(text);
+        String corpName = longestMatch(text, knownCorpNames);
+        boolean history = HISTORY.matcher(text).find();
         String purposeAttachedToMarker = purposeImmediatelyFollowedByTotalMarker(text);
         if (purposeAttachedToMarker != null) {
             return new FundraisingQuestion(
-                    corpName, PURPOSE_KEYWORDS.get(purposeAttachedToMarker), purposeAttachedToMarker);
+                    corpName,
+                    PURPOSE_KEYWORDS.get(purposeAttachedToMarker),
+                    purposeAttachedToMarker,
+                    Set.of(),
+                    history);
         }
         if (asksForTotal(text)) {
-            return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+            Set<String> excluded = asksToExclude(text) ? purposesIn(text) : Set.of();
+            return new FundraisingQuestion(
+                    corpName, null, totalLabel(excluded), excluded, history);
         }
         String purpose = PURPOSE_KEYWORDS.keySet().stream()
                 .filter(text::contains)
                 .findFirst()
                 .orElse(null);
         if (purpose != null) {
-            return new FundraisingQuestion(corpName, PURPOSE_KEYWORDS.get(purpose), purpose);
+            return new FundraisingQuestion(
+                    corpName, PURPOSE_KEYWORDS.get(purpose), purpose, Set.of(), history);
         }
-        return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계");
+        return new FundraisingQuestion(corpName, null, "자금 사용 목적 합계", Set.of(), history);
+    }
+
+    private static boolean asksToExclude(String text) {
+        return text.contains("제외") || text.contains("빼고");
+    }
+
+    private static Set<String> purposesIn(String text) {
+        Set<String> keys = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : PURPOSE_KEYWORDS.entrySet()) {
+            if (text.contains(entry.getKey())) {
+                keys.add(entry.getValue());
+            }
+        }
+        return keys;
+    }
+
+    private static String totalLabel(Set<String> excluded) {
+        if (excluded.isEmpty()) {
+            return "자금 사용 목적 합계";
+        }
+        // 같은 fact에 짧은 키워드와 긴 키워드가 함께 있으면 긴 쪽만 쓴다.
+        Set<String> labels = new LinkedHashSet<>();
+        Set<String> seenKeys = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : PURPOSE_KEYWORDS.entrySet()) {
+            if (excluded.contains(entry.getValue()) && seenKeys.add(entry.getValue())) {
+                labels.add(entry.getKey());
+            }
+        }
+        return "자금 사용 목적 합계(" + String.join(", ", labels) + " 제외)";
     }
 
     private static String purposeImmediatelyFollowedByTotalMarker(String text) {
@@ -97,5 +140,16 @@ final class FundraisingQuestionParser {
             }
         }
         return false;
+    }
+
+    private static String longestMatch(String text, List<String> candidates) {
+        String best = null;
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank() && text.contains(candidate)
+                    && (best == null || candidate.length() > best.length())) {
+                best = candidate;
+            }
+        }
+        return best;
     }
 }

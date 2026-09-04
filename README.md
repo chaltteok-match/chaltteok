@@ -83,5 +83,6 @@ Issue·브랜치·PR 제목과 세부 리뷰·병합 방식은 [CONTRIBUTING.md]
 
 ## 문서
 
-- [프로젝트 계획](docs/project-plan.md): 역할 분담, 개발 일정, 세부 작업 규칙 및 확장 방향
+- [프로젝트 계획](docs/project-plan.md): 역할 분담, 페이즈별 작업 목록, 세부 작업 규칙 및 확장 방향
+- [평가 요구사항](docs/evaluation-requirements.md): 주최측이 정한 제출·평가·비용 조건과 아직 답이 없는 항목
 - [협업 가이드](CONTRIBUTING.md): Issue·브랜치·PR 이름과 리뷰·병합 규칙

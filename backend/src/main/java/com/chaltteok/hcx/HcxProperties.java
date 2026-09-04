@@ -28,8 +28,14 @@ public class HcxProperties {
     @DecimalMax("1.0")
     private double temperature = 0.1;
 
+    /**
+     * 출력 상한. TPM이 실제 소비가 아니라 {@code input token + maxTokens}로 계산되므로
+     * 낮출수록 429에 덜 닿는다. 코퍼스에서 답이 가장 긴 경우(현대건설 14회 정정 사슬)가
+     * 377토큰이었고, 같은 질문을 두 번 불렀을 때 최대 1.6배까지 흔들렸다.
+     * 잘린 답은 틀린 답이므로 최댓값의 두 배로 둔다. 근거는 backend/README.md 참조.
+     */
     @Min(1)
-    private int maxTokens = 1024;
+    private int maxTokens = 768;
 
     @Min(1)
     private int timeoutSeconds = 30;

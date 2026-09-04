@@ -3,6 +3,7 @@ package com.chaltteok.exchange;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.DisclosureDocument;
 import com.chaltteok.disclosure.model.DisclosureRelation;
 import com.chaltteok.disclosure.model.EvidenceChunk;
@@ -71,9 +72,10 @@ class ExchangeAnswerHandlerIT {
         // 삼성전자 20250728800035 — 원본, 22.7조. 검증 기준값.
         persistenceService.save(samsungContract("20250728800035", LocalDate.of(2025, 7, 28), false,
                 "단일판매ㆍ공급계약체결", "22,764,764,160,000", "22764764160000"));
-        // 같은 계약의 정정본. 금액은 같다.
-        persistenceService.save(samsungContract("20250731800028", LocalDate.of(2025, 7, 31), true,
-                "[기재정정]단일판매ㆍ공급계약체결", "22,764,764,160,000", "22764764160000"));
+        // 같은 계약의 정정본. 금액은 같고, 7월 28일 공시를 고친 것이다.
+        persistenceService.save(samsungCorrection("20250731800028", LocalDate.of(2025, 7, 31),
+                "22,764,764,160,000", "22764764160000", LocalDate.of(2025, 7, 28),
+                "exchange_20250728800035"));
 
         // 대우건설 2023-03-10 — 리비아 계약 원본.
         persistenceService.save(daewooContract("20230310800034", LocalDate.of(2023, 3, 10), false,
@@ -97,6 +99,19 @@ class ExchangeAnswerHandlerIT {
         persistenceService.save(daewooContract("20240228800400", LocalDate.of(2024, 2, 28), false,
                 "단일판매ㆍ공급계약체결", "700,000,000,000", "700000000000", "국내 발주처 B"));
 
+        // 서로 다른 두 계약과, 같은 날 함께 접수된 그 둘의 정정본.
+        // 접수일로 되짚어도 원공시일이 갈리는 경우다.
+        persistenceService.save(daewooContract("20220301800100", LocalDate.of(2022, 3, 1), false,
+                "단일판매ㆍ공급계약체결", "300,000,000,000", "300000000000", "폴란드 발주처"));
+        persistenceService.save(daewooContract("20220401800100", LocalDate.of(2022, 4, 1), false,
+                "단일판매ㆍ공급계약체결", "200,000,000,000", "200000000000", "체코 발주처"));
+        persistenceService.save(daewooCorrection("20221201800100", LocalDate.of(2022, 12, 1),
+                "310,000,000,000", "310000000000", LocalDate.of(2022, 3, 1),
+                "exchange_20220301800100"));
+        persistenceService.save(daewooCorrection("20221201800200", LocalDate.of(2022, 12, 1),
+                "210,000,000,000", "210000000000", LocalDate.of(2022, 4, 1),
+                "exchange_20220401800100"));
+
         // HMM 20230214 — 신규시설투자등.
         persistenceService.save(hmmInvestment());
     }
@@ -113,7 +128,8 @@ class ExchangeAnswerHandlerIT {
         assertThat(result.isAnswerable()).isTrue();
         assertThat(result.evidences()).hasSize(1);
         assertThat(result.evidences().get(0).companyName()).isEqualTo("삼성전자");
-        assertThat(result.evidences().get(0).reportDate()).isEqualTo(LocalDate.of(2025, 7, 28));
+        // 7월 28일 계약을 물으면 그 계약을 고친 7월 31일 정정본이 원본을 대체한다.
+        assertThat(result.evidences().get(0).reportDate()).isEqualTo(LocalDate.of(2025, 7, 31));
         assertThat(result.evidences().get(0).evidenceText()).contains("22,764,764,160,000");
         assertThat(result.processSummary())
                 .contains("삼성전자·단일판매ㆍ공급계약체결·계약금액 식별")
@@ -144,6 +160,43 @@ class ExchangeAnswerHandlerIT {
         assertThat(result.evidences()).hasSize(1);
         assertThat(result.evidences().get(0).reportName()).startsWith("[기재정정]");
         assertThat(result.evidences().get(0).reportDate()).isEqualTo(LocalDate.of(2023, 6, 30));
+    }
+
+    @Test
+    void correctionIsReachableByItsOwnFilingDate() {
+        // 2025-07-31에 올라온 것은 7월 28일 계약의 정정본이다. 정정본을 원공시일로 옮겨
+        // 찾기 때문에, 접수일로 부르는 길이 없으면 그날 공시가 있는데도 답변 불가가 나간다.
+        AnswerHandlerResult result =
+                answer("삼성전자가 2025년 7월 31일 공시한 공급계약의 계약금액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().get(0).evidenceText()).contains("22,764,764,160,000");
+    }
+
+    @Test
+    void filingDateAndContractDateGiveTheSameAnswer() {
+        AnswerHandlerResult byContractDate =
+                answer("삼성전자가 2025년 7월 28일 공시한 공급계약의 계약금액은 얼마인가?");
+        AnswerHandlerResult byFilingDate =
+                answer("삼성전자가 2025년 7월 31일 공시한 공급계약의 계약금액은 얼마인가?");
+
+        assertThat(byFilingDate.evidences())
+                .extracting(RetrievedEvidence::evidenceText)
+                .isEqualTo(byContractDate.evidences().stream()
+                        .map(RetrievedEvidence::evidenceText)
+                        .toList());
+    }
+
+    @Test
+    void refusesWhenCorrectionsFiledTogetherBelongToDifferentContracts() {
+        // 2022-12-01에는 3월 1일 계약과 4월 1일 계약의 정정본이 함께 접수됐다.
+        // 접수일로 되짚어도 어느 계약을 묻는지 갈리므로 고르지 않는다.
+        AnswerHandlerResult result =
+                answer("대우건설이 2022년 12월 1일 공시한 공급계약의 계약금액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("2022-12-01");
     }
 
     @Test
@@ -262,6 +315,31 @@ class ExchangeAnswerHandlerIT {
                 "300,870,903,000,000", "300870903000000", "원", "KRW", rceptDt);
         fixture.row(null, "매출액대비(%)", "contract_revenue_ratio",
                 "7.6", "7.6", "%", "%", rceptDt);
+        return fixture.build();
+    }
+
+    /** 삼성전자 정정본. 실제 20250731800028처럼 고친 대상의 접수일을 함께 담는다. */
+    private static PreprocessResult samsungCorrection(
+            String rceptNo, LocalDate rceptDt, String rawAmount, String normalizedAmount,
+            LocalDate targetFilingDate, String originalDocId) {
+        String docId = "exchange_" + rceptNo;
+        Fixture fixture = new Fixture(docId);
+        fixture.document = document(docId, "삼성전자", "00126380", "005930",
+                "[기재정정]단일판매ㆍ공급계약체결", rceptNo, rceptDt, true);
+        fixture.row(null, "정정관련 공시서류제출일", "correction_target_filing_date",
+                targetFilingDate.toString(), targetFilingDate.toString(), null, null, rceptDt,
+                ValueType.DATE);
+        fixture.row("2. 계약내역", "계약금액(원)", "contract_amount",
+                rawAmount, normalizedAmount, "원", "KRW", rceptDt);
+        // 정정본도 원본과 같은 항목을 모두 담는다. 실제 원문이 그렇다.
+        fixture.row(null, "최근매출액(원)", "contract_recent_revenue",
+                "300,870,903,000,000", "300870903000000", "원", "KRW", rceptDt);
+        fixture.row(null, "매출액대비(%)", "contract_revenue_ratio",
+                "7.6", "7.6", "%", "%", rceptDt);
+        fixture.relations.add(new DisclosureRelation(
+                "%s:%s:correction".formatted(originalDocId, docId),
+                originalDocId, originalDocId, docId, RelationType.CORRECTION,
+                null, null, List.of(), List.of(fixture.chunks.get(0).chunkId())));
         return fixture.build();
     }
 

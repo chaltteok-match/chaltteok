@@ -262,7 +262,39 @@ public class ExchangeAnswerHandler implements AnswerHandler {
             return matched;
         }
 
-        return onlyFiledOn(matched, parsed.reportDate());
+        List<DisclosureDocumentEntity> onDate = onlyFiledOn(matched, parsed.reportDate());
+        return onDate.isEmpty()
+                ? onlyFiledOn(matched, originalFilingDateOf(matched, parsed.reportDate()))
+                : onDate;
+    }
+
+    /**
+     * 접수일로 부르는 길. 그 날 접수된 문서가 고친 계약의 원공시일을 돌려준다.
+     *
+     * <p>정정본은 {@link #onlyFiledOn}이 원공시일로 옮겨 찾으므로, 자기 접수일로는 어떤
+     * 질문도 닿지 않는다. 삼성전자 {@code 20250731800028}은 2025-07-31에 접수됐지만
+     * 7월 28일 계약의 정정본이라 「7월 31일 공시」로 물으면 아무것도 나오지 않았다.
+     *
+     * <p>접수일 후보를 그대로 쓰지 않고 원공시일로 되돌리는 이유는, 그 정정본이 나중에 또
+     * 정정됐을 때 낡은 값을 답하지 않기 위해서다. 원공시일로 기존 경로를 다시 타면 그 계약의
+     * 최신 정정본이 그대로 뽑힌다.
+     *
+     * <p>한 날짜에 서로 다른 계약의 정정본이 섞이면 원공시일이 갈린다. 그때는 고르지 않고
+     * {@code null}을 돌려 답변 불가로 둔다.
+     */
+    private LocalDate originalFilingDateOf(
+            List<DisclosureDocumentEntity> documents, LocalDate reportDate) {
+        List<DisclosureDocumentEntity> filedOnDate = documents.stream()
+                .filter(document -> reportDate.equals(document.getRceptDt()))
+                .toList();
+        if (filedOnDate.isEmpty()) {
+            return null;
+        }
+        Map<String, LocalDate> targetDates = targetFilingDates(filedOnDate);
+        Set<LocalDate> originals = filedOnDate.stream()
+                .map(document -> targetDates.getOrDefault(document.getDocId(), document.getRceptDt()))
+                .collect(Collectors.toSet());
+        return originals.size() == 1 ? originals.iterator().next() : null;
     }
 
     /**
@@ -274,8 +306,8 @@ public class ExchangeAnswerHandler implements AnswerHandler {
      */
     private List<DisclosureDocumentEntity> onlyFiledOn(
             List<DisclosureDocumentEntity> documents, LocalDate reportDate) {
-        if (documents.isEmpty()) {
-            return documents;
+        if (documents.isEmpty() || reportDate == null) {
+            return List.of();
         }
         Map<String, LocalDate> targetDates = targetFilingDates(documents);
         return documents.stream()

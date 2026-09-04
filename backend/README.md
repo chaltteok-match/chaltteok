@@ -149,6 +149,20 @@ export HCX_API_KEY
 ./gradlew test --tests com.chaltteok.fundraising.FundraisingHcxLiveApiTest
 ```
 
+### 출력 길이 측정 — `HCX_MAX_TOKENS` 정하기
+
+CLOVA Studio TPM은 실제 소비가 아니라 `input token + maxTokens`로 계산됩니다. 답이 200토큰이어도
+`maxTokens=1024`면 1024를 쓴 것으로 셉니다. 낮출수록 429에 덜 닿지만 너무 낮추면 답이 잘리므로,
+바닥이 어딘지는 실제로 재야 압니다.
+
+적재된 로컬 DB가 있어야 합니다(진짜 근거로 프롬프트를 만듭니다). 질문 10개를 한 번씩 부릅니다.
+
+```bash
+./gradlew test --tests com.chaltteok.hcx.HcxMaxTokensLiveTest --info
+```
+
+출력 토큰의 최대·평균과, 그때 건당 TPM이 표로 나옵니다. 모델을 바꾸면 다시 재야 합니다.
+
 타임아웃·인증 실패는 `HcxClientException`으로 감싼 뒤 `/answer`에서 HTTP 503(`SERVICE_UNAVAILABLE`)으로 반환합니다. CI의 `FundraisingAnswerIT`는 HCX를 호출하지 않고 이 매핑과 대표 질문의 `retrieved_context`·`think_trace`를 확인합니다.
 
 확인이 끝나면 현재 터미널에서 다음 환경변수를 제거합니다.

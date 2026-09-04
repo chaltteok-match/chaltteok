@@ -31,6 +31,10 @@ final class HcxResponseErrorHandler implements ResponseErrorHandler {
         if (status == HttpStatus.TOO_MANY_REQUESTS) {
             throw new HcxClientException(HcxErrorType.RATE_LIMIT, message, retryAfter, null);
         }
+        // 429가 아닌 4xx는 우리 요청이 잘못된 것이다. 프롬프트가 그대로인 채 다시 걸면 같은 답이 온다.
+        if (status.is4xxClientError()) {
+            throw new HcxClientException(HcxErrorType.BAD_REQUEST, message);
+        }
         throw new HcxClientException(HcxErrorType.UPSTREAM, message, retryAfter, null);
     }
 

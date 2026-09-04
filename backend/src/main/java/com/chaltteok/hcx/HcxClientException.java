@@ -37,8 +37,12 @@ public class HcxClientException extends RuntimeException {
     /**
      * 다시 걸어 볼 만한 실패인지.
      *
-     * <p>인증·설정 오류는 다시 걸어도 같은 결과다. 응답에 답변이 없는 경우도
-     * 재시도 대상이 아니다({@code temperature}가 낮아 같은 응답이 온다).
+     * <p>인증·설정 오류와 429가 아닌 4xx는 다시 걸어도 같은 결과다. 응답에 답변이 없는
+     * 경우도 재시도 대상이 아니다({@code temperature}가 낮아 같은 응답이 온다).
+     *
+     * <p>{@code INVALID_RESPONSE}는 <b>모델이 빈 텍스트를 준 경우만</b> 가리킨다. 끊긴 연결은
+     * {@code TIMEOUT}, 읽을 수 없는 응답 본문은 Spring AI 예외를 거쳐 {@code UPSTREAM}이 되어
+     * 둘 다 재시도된다({@code SpringAiHcxClient} 참조).
      */
     public boolean isRetryable() {
         return errorType == HcxErrorType.RATE_LIMIT

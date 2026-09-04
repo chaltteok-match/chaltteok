@@ -22,6 +22,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.retry.TransientAiException;
 import org.springframework.web.client.ResourceAccessException;
 
@@ -87,6 +88,31 @@ class SpringAiHcxClientTest {
                 .isInstanceOf(HcxClientException.class)
                 .extracting(exception -> ((HcxClientException) exception).getErrorType())
                 .isEqualTo(HcxErrorType.TIMEOUT);
+    }
+
+    @Test
+    void unreadableResponseBodyStaysRetryable() {
+        // 응답 본문을 못 읽으면 Spring AI 예외로 올라와 UPSTREAM이 된다.
+        // INVALID_RESPONSE는 본문을 읽었는데 모델이 빈 텍스트를 준 경우만 가리킨다.
+        when(chatModel.call(any(Prompt.class)))
+                .thenThrow(new NonTransientAiException("malformed response body"));
+
+        assertThatThrownBy(() -> client.generate(new HcxPrompt("지시문", "질문")))
+                .isInstanceOf(HcxClientException.class)
+                .extracting(exception -> ((HcxClientException) exception).isRetryable())
+                .isEqualTo(true);
+    }
+
+    @Test
+    void emptyModelOutputIsNotRetried() {
+        var response = new ChatResponse(
+                List.of(new Generation(new AssistantMessage(" "))));
+        when(chatModel.call(any(Prompt.class))).thenReturn(response);
+
+        assertThatThrownBy(() -> client.generate(new HcxPrompt("지시문", "질문")))
+                .isInstanceOf(HcxClientException.class)
+                .extracting(exception -> ((HcxClientException) exception).isRetryable())
+                .isEqualTo(false);
     }
 
     @Test

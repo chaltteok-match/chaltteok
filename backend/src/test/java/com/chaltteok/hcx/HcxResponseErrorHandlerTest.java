@@ -39,6 +39,14 @@ class HcxResponseErrorHandlerTest {
     }
 
     @Test
+    void mapsBadRequestToNonRetryableError() {
+        // 429가 아닌 4xx는 우리 요청이 잘못된 것이다. 프롬프트가 그대로면 다시 걸어도 같다.
+        assertErrorType(HttpStatus.BAD_REQUEST, HcxErrorType.BAD_REQUEST);
+        assertErrorType(HttpStatus.NOT_FOUND, HcxErrorType.BAD_REQUEST);
+        assertErrorType(HttpStatus.PAYLOAD_TOO_LARGE, HcxErrorType.BAD_REQUEST);
+    }
+
+    @Test
     void readsRetryAfterSeconds() {
         var headers = new HttpHeaders();
         headers.set(HttpHeaders.RETRY_AFTER, "7");

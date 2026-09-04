@@ -103,7 +103,10 @@
 `RetryingHcxClient`가 한 곳에서 재시도를 맡는다(Spring AI 안쪽 재시도는 꺼 둔다).
 
 - 다시 거는 것: `RATE_LIMIT`(429) · `TIMEOUT` · `UPSTREAM`(5xx)
-- 즉시 실패: `AUTHENTICATION` · `CONFIGURATION` · `INVALID_RESPONSE` — 다시 걸어도 같다
+- 즉시 실패: `AUTHENTICATION` · `CONFIGURATION` · `BAD_REQUEST`(429가 아닌 4xx) ·
+  `INVALID_RESPONSE` — 다시 걸어도 같다
+- `INVALID_RESPONSE`는 **모델이 빈 텍스트를 준 경우만**이다. 끊긴 연결은 `TIMEOUT`,
+  읽을 수 없는 응답 본문은 `UPSTREAM`이 되어 둘 다 재시도된다
 - 대기는 1초에서 2배씩, 한 번에 최대 8초. `Retry-After` 헤더가 있으면 그 값을 따른다
 - 총 대기 예산 120초. 서버가 큰 `Retry-After`를 줘도 예산을 넘길 대기는 하지 않고 실패한다
 

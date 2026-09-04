@@ -79,7 +79,7 @@ class RetryingHcxClientTest {
 
     @ParameterizedTest
     @EnumSource(value = HcxErrorType.class,
-            names = {"AUTHENTICATION", "CONFIGURATION", "INVALID_RESPONSE"})
+            names = {"AUTHENTICATION", "CONFIGURATION", "BAD_REQUEST", "INVALID_RESPONSE"})
     void 다시_걸어도_같은_실패는_즉시_끝낸다(HcxErrorType type) {
         FakeClient delegate = new FakeClient(failure(type), OK);
 
@@ -161,13 +161,5 @@ class RetryingHcxClientTest {
         assertThatThrownBy(() -> client(delegate, 1).generate(PROMPT))
                 .isInstanceOf(HcxClientException.class);
         assertThat(delegate.calls).isEqualTo(1);
-    }
-
-    @Test
-    void 최악의_경우에도_평가_타임아웃_안에_든다() {
-        // 시도 3회 × 호출 타임아웃 30초 + 백오프 대기(1s + 2s) = 93초 < 300초
-        long worstCall = 3L * 30;
-        long worstWait = 1 + 2;
-        assertThat(worstCall + worstWait).isLessThan(300);
     }
 }

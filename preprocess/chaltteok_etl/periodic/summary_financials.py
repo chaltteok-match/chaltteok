@@ -42,7 +42,8 @@ PARSER_VERSION = "0.1.0"
 SCHEMA_VERSION = "0.2"
 SECTION_TITLE_KEYWORDS = ("요약재무정보", "요약연결재무정보")
 
-RE_PERIOD_NO = re.compile(r"제\s*(\d+)\s*기")
+# 기수와 '기' 사이에 당기·전기 표시가 끼는 문서가 있다: '제20(당)기 기말', '제5(전전)기말'.
+RE_PERIOD_NO = re.compile(r"제\s*(\d+)\s*(?:[(（][^)）]{0,8}[)）])?\s*기")
 RE_YEAR = re.compile(r"(?:19|20)\d{2}")
 # 표기 흔들림 흡수: (단위 : 백만원) (단위:백만원) (단위: 백만원)
 RE_UNIT = re.compile(r"\(\s*단위\s*[:：]?\s*([^)<]{1,20}?)\s*\)")

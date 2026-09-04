@@ -135,6 +135,46 @@ def test_기수로_연도를_역산한다(tmp_path):
     }
 
 
+def test_기수와_기_사이에_당기_표시가_끼어도_읽는다(tmp_path):
+    """하나금융지주는 '제20(당)기 기말'이라고 쓴다. 연도 표기도 없어 이 기수가 유일한 앵커다."""
+    body = (
+        "<P>가. 요약 연결 재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            header=("제56(당)기 기말", "제 55(전)기 기말", "제 54(전전)기 기말"),
+            rows=(row_xml("자산총계", "637,847,513", "591,925,995", "568,603,280"),),
+        )
+    )
+    result = parse(tmp_path, body)
+    assets = {
+        fact.as_of_date.year: fact.raw_value
+        for fact in facts_by_key(result, "total_assets")
+    }
+    assert assets == {
+        2024: "637,847,513",
+        2023: "591,925,995",
+        2022: "568,603,280",
+    }
+
+
+def test_기수_표시가_기말에_바로_붙어도_읽는다(tmp_path):
+    """우리금융지주는 '제5(당)기말'처럼 띄어쓰기 없이 쓴다."""
+    body = (
+        "<P>가. 요약 연결 재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(
+            header=("제56(당)기말", "제55(전)기말", "제54(전전)기말"),
+            rows=(row_xml("자산총계", "1,000", "900", "800"),),
+        )
+    )
+    result = parse(tmp_path, body)
+    assert {fact.as_of_date.year for fact in facts_by_key(result, "total_assets")} == {
+        2024,
+        2023,
+        2022,
+    }
+
+
 def test_컬럼이_오름차순이어도_가장_큰_기수를_당기로_본다(tmp_path):
     body = (
         "<P>가. 요약연결재무정보</P>"

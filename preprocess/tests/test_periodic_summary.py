@@ -436,6 +436,60 @@ def test_본문_속_재무제표_언급을_소제목으로_보지_않는다(tmp_
     assert scopes == {Scope.CONSOLIDATED}
 
 
+def test_소제목_번호가_여러_단계여도_인식한다(tmp_path):
+    """현대제철은 '1-1. 연결재무제표'처럼 번호를 두 단계로 쓴다."""
+    body = (
+        "<P>1-1. 연결재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "1,000", "900", "800"),))
+        + "<P>1-2. 별도재무제표</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("매출액", "500", "400", "300"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "1,000"
+    assert scopes[(Scope.SEPARATE, 2024)] == "500"
+
+
+def test_표_아래_주석의_기수_표기를_소제목으로_보지_않는다(tmp_path):
+    """'(주2) 제20기(당기) 재무제표는 …'의 '기)'는 소제목 번호와 모양이 같다.
+
+    소제목은 글 조각의 맨 앞에서 시작한다. 문장 가운데 나오면 본문이다.
+    """
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("자산총계", "1,000", "900", "800"),))
+        + "<P>(주1) 한국채택국제회계기준에 따라 작성하였습니다."
+        "(주2) 제56기(당기) 재무제표는 주주총회 승인전 재무제표입니다.</P>"
+        + summary_table(rows=(row_xml("영업이익", "100", "90", "80"),))
+    )
+    result = parse(tmp_path, body)
+    assert {fact.scope for fact in facts_by_key(result, "operating_profit")} == {
+        Scope.CONSOLIDATED
+    }
+
+
+def test_다른_단원을_가리키는_안내문을_소제목으로_보지_않는다(tmp_path):
+    """'"가. 재무제표 재작성 등 유의사항"을 참고하시기 바랍니다'는 안내문이다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        + summary_table(rows=(row_xml("자산총계", "1,000", "900", "800"),))
+        + "<P>구체적인 내용은 III. 재무에 관한 사항 8. 기타 재무에 관한 사항 "
+        "\"가. 재무제표 재작성 등 유의사항\"을 참고하시기 바랍니다.</P>"
+        + summary_table(rows=(row_xml("영업이익", "100", "90", "80"),))
+    )
+    result = parse(tmp_path, body)
+    assert {fact.scope for fact in facts_by_key(result, "operating_profit")} == {
+        Scope.CONSOLIDATED
+    }
+
+
 def test_기준을_밝히지_않은_소제목은_앞_기준을_물려받지_않는다(tmp_path):
     """카카오처럼 '가. 요약 연결 재무정보' 다음에 '나. 요약 재무정보'가 오는 문서가 있다.
 
@@ -611,3 +665,23 @@ def test_실제_삼성전자_2024_사업보고서_검증값():
     assert actual[("revenue", "separate", 2024)] == "209052241000000"
     assert actual[("operating_profit", "consolidated", 2024)] == "32725961000000"
     assert actual[("total_assets", "consolidated", 2024)] == "514531948000000"
+
+
+@pytest.mark.skipif(
+    not (CORPUS_ROOT / "manifest.jsonl").is_file(),
+    reason="코퍼스 원본이 없는 환경(CI 등)에서는 건너뛴다",
+)
+def test_실제_하나금융지주_2024_사업보고서_검증값():
+    """머리글이 '제20(당)기 기말'이라 한때 문서 전체가 버려지던 보고서."""
+    from chaltteok_etl.common.manifest import find_manifest_row
+
+    row = find_manifest_row(CORPUS_ROOT, "periodic_20250317000894")
+    result = parse_summary_financials(CORPUS_ROOT, row)
+    actual = {
+        (fact.fact_key, fact.scope.value, (fact.period_end or fact.as_of_date).year): fact.normalized_value
+        for fact in result.extracted_facts
+    }
+    assert actual[("total_assets", "consolidated", 2024)] == "637847513000000"
+    assert actual[("total_assets", "consolidated", 2023)] == "591925995000000"
+    assert actual[("operating_profit", "consolidated", 2024)] == "4855182000000"
+    assert actual[("net_income", "consolidated", 2024)] == "3768529000000"

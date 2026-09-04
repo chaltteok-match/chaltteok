@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
  * <p>대표 질문: 삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 지분율은 얼마인가?
  *
  * <p>공시일만 있으면 그날 문서를 특정하고, 같은 날 정정본이 있으면 정정본만 남긴다.
- * {@code 어떻게 바뀌었나}처럼 과정을 물으면 같은 보고자의 신규·변경·해소를 시간순으로 잇는다.
+ * {@code 어떻게 바뀌었나}처럼 과정을 물으면 같은 보고자의 신규·변동·변경을 시간순으로 잇는다.
  */
 @Component
 @Order(OwnershipAnswerHandler.HANDLER_ORDER)
@@ -138,7 +138,7 @@ public class OwnershipAnswerHandler implements AnswerHandler {
     }
 
     /**
-     * 같은 보고자의 신규·변경·해소를 시간순으로 모아 주식 수·지분율이 바뀐 과정을 근거로 남긴다.
+     * 같은 보고자의 신규·변동·변경을 시간순으로 모아 주식 수·지분율이 바뀐 과정을 근거로 남긴다.
      *
      * <p>공시일이 있으면 그 날이 들어 있는 사건만 쓰고, 없으면 사건이 하나일 때만 답한다.
      * 보고자가 다르거나 신규가 다시 나오면 새 사건이다. 추측해서 묶지 않는다.
@@ -183,8 +183,8 @@ public class OwnershipAnswerHandler implements AnswerHandler {
         }
         if (chain.size() < 2) {
             return AnswerHandlerResult.unavailable(
-                    searchSummary + " → 변경·해소 이력 없음",
-                    "찾은 대량보유 공시에 변경·해소 이력이 없습니다"
+                    searchSummary + " → 변동·변경 이력 없음",
+                    "찾은 대량보유 공시에 변동·변경 이력이 없습니다"
             );
         }
 
@@ -218,8 +218,8 @@ public class OwnershipAnswerHandler implements AnswerHandler {
         }
         if (collapsed.size() < 2) {
             return AnswerHandlerResult.unavailable(
-                    searchSummary + " → 변경·해소 이력 없음",
-                    "찾은 대량보유 공시에 변경·해소 이력이 없습니다"
+                    searchSummary + " → 변동·변경 이력 없음",
+                    "찾은 대량보유 공시에 변동·변경 이력이 없습니다"
             );
         }
         return AnswerHandlerResult.of(

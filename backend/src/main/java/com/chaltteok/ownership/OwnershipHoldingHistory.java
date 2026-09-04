@@ -9,14 +9,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
- * 같은 보고자의 신규·변경·해소를 한 사건으로 잇는다.
+ * 같은 보고자의 신규·변동·변경을 한 사건으로 잇는다.
  *
- * <p>보고구분이 없으면 앞 보고에 붙이지 않는다. 해소 다음 보고는 새 사건이다.
+ * <p>코퍼스 보고구분은 {@code 변동}·{@code 변동ㆍ변경}·{@code 변경}·{@code 신규}뿐이다.
+ * DART에서 {@code 변동}은 보유 비율이 1%p 이상 바뀐 보고라 수량 사슬에 넣는다.
+ * 보고구분이 없으면 앞 보고에 붙이지 않는다. {@code 해소}는 이 코퍼스에 없으나
+ * 값이 오면 사슬을 끝내는 보고로 본다.
  */
 final class OwnershipHoldingHistory {
+
+    /** HCX 실측 때 근거 15건이 입력 약 1,700토큰이었다. 그보다 긴 사슬은 잘릴 수 있다. */
+    static final int MAX_COLLAPSED_STEPS = 15;
 
     enum ReportKind {
         INITIAL,
@@ -49,7 +57,7 @@ final class OwnershipHoldingHistory {
         if (compact.contains("해소")) {
             return ReportKind.CLEAR;
         }
-        if (compact.contains("변경")) {
+        if (compact.contains("변동") || compact.contains("변경")) {
             return ReportKind.CHANGE;
         }
         if (compact.contains("신규")) {
@@ -109,9 +117,35 @@ final class OwnershipHoldingHistory {
             changed.add(step);
         }
         if (changed.size() >= 2 || sameDay.size() < 2) {
-            return changed;
+            return limitHistory(changed);
         }
         return List.of(sameDay.getFirst(), sameDay.getLast());
+    }
+
+    /**
+     * 처음·마지막과 직전 대비 지분율(없으면 주식 수) 변동이 큰 단계를 남긴다.
+     */
+    static List<Step> limitHistory(List<Step> collapsed) {
+        if (collapsed.size() <= MAX_COLLAPSED_STEPS) {
+            return collapsed;
+        }
+        record Ranked(int index, double delta) {
+        }
+        List<Ranked> interior = new ArrayList<>();
+        for (int index = 1; index < collapsed.size() - 1; index++) {
+            interior.add(new Ranked(index, quantityDelta(collapsed.get(index - 1), collapsed.get(index))));
+        }
+        interior.sort(Comparator.comparingDouble(Ranked::delta).reversed().thenComparingInt(Ranked::index));
+        Set<Integer> keep = new TreeSet<>();
+        keep.add(0);
+        keep.add(collapsed.size() - 1);
+        for (Ranked ranked : interior) {
+            if (keep.size() >= MAX_COLLAPSED_STEPS) {
+                break;
+            }
+            keep.add(ranked.index());
+        }
+        return keep.stream().map(collapsed::get).toList();
     }
 
     static List<Step> preferCorrectionsByDay(List<Step> alongChain) {
@@ -156,6 +190,35 @@ final class OwnershipHoldingHistory {
             chains.add(current);
         }
         return chains;
+    }
+
+    private static double quantityDelta(Step previous, Step current) {
+        Double previousRatio = parseKeyPart(previous.quantityKey(), 1);
+        Double currentRatio = parseKeyPart(current.quantityKey(), 1);
+        if (previousRatio != null && currentRatio != null) {
+            return Math.abs(currentRatio - previousRatio);
+        }
+        Double previousShares = parseKeyPart(previous.quantityKey(), 0);
+        Double currentShares = parseKeyPart(current.quantityKey(), 0);
+        if (previousShares != null && currentShares != null) {
+            return Math.abs(currentShares - previousShares);
+        }
+        return 0;
+    }
+
+    private static Double parseKeyPart(String quantityKey, int part) {
+        if (quantityKey == null || !quantityKey.contains("|")) {
+            return null;
+        }
+        String[] parts = quantityKey.split("\\|", -1);
+        if (part >= parts.length || parts[part].isBlank()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(parts[part].replace(",", ""));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static Comparator<Step> byFilingOrder() {

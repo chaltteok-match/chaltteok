@@ -27,7 +27,11 @@ class CorpNameResolverTest {
             new CorpIdentity("케이티", "KT", "030200", "00126257"),
             new CorpIdentity("엘에스일렉트릭", "LS ELECTRIC", "010120", "00110875"),
             new CorpIdentity("삼성화재해상보험", "삼성화재", "000810", "00126362"),
-            new CorpIdentity("우리금융지주", "우리금융지주", "316140", "01515326")));
+            new CorpIdentity("우리금융지주", "우리금융지주", "316140", "01515326"),
+            new CorpIdentity("신한지주", "신한지주", "055550", "00382199"),
+            new CorpIdentity("한화에어로스페이스", "한화에어로스페이스", "012450", "00164645"),
+            new CorpIdentity("삼성바이오로직스", "삼성바이오로직스", "207940", "00877059"),
+            new CorpIdentity("아모레퍼시픽", "아모레퍼시픽", "090430", "00583424")));
 
     @ParameterizedTest
     @CsvSource({
@@ -97,6 +101,37 @@ class CorpNameResolverTest {
     void 긴_숫자_안에_들어_있는_6자리는_종목코드로_읽지_않는다() {
         // 접수번호 20250408000012 안에 '005380' 같은 값이 우연히 들어갈 수 있다.
         assertThat(RESOLVER.resolve("접수번호 20050538000012 공시의 금액은?")).isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "한화에어로 매출액은?, 한화에어로스페이스",
+            "삼성바이오 매출액은?, 삼성바이오로직스",
+            "아모레 매출액은?, 아모레퍼시픽",
+            "우리금융 자산총계는?, 우리금융지주",
+    })
+    void 앞에서_자른_줄임말로_물어도_찾는다(String question, String expected) {
+        assertThat(RESOLVER.resolve(question)).isEqualTo(expected);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"신한카드 매출액은?", "신한은행 자산총계는?"})
+    void 코퍼스에_없는_계열사를_지주회사로_읽지_않는다(String question) {
+        // '신한지주'에서 접미어를 떼면 '신한'이 되는데, 두 글자는 계열사 이름에 그대로 들어간다.
+        assertThat(RESOLVER.resolve(question)).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "삼성물산 매출액은?", "한화시스템 매출액은?", "현대백화점 매출액은?", "삼성증권 매출액은?"})
+    void 코퍼스에_없는_회사를_줄임말로_잘못_잡지_않는다(String question) {
+        assertThat(RESOLVER.resolve(question)).isNull();
+    }
+
+    @Test
+    void 여러_기업의_줄임말이_겹치면_고르지_않는다() {
+        // '삼성전'은 삼성전자와 삼성전기에 함께 걸린다.
+        assertThat(RESOLVER.resolve("삼성전 매출액은?")).isNull();
     }
 
     @Test

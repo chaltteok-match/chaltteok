@@ -53,6 +53,16 @@ public final class CorpNameResolver {
     /** 지주회사 접미어. `포스코`로 물어도 `POSCO홀딩스`를 찾게 한다. */
     private static final List<String> GROUP_SUFFIXES = List.of("홀딩스", "지주", "그룹");
 
+    /** 사명·상장 표기·코드는 그대로 쓴다. `NC`·`KT`·`SM`처럼 두 글자인 사명이 있다. */
+    private static final int MIN_ALIAS_CHARS = 2;
+    /**
+     * 잘라 만든 표기는 세 글자부터 쓴다.
+     *
+     * <p>`신한지주`에서 접미어를 떼면 `신한`이 되는데, 이러면 `신한카드`·`신한은행` 질문이
+     * 신한지주로 잡힌다. 우리가 답할 수 없는 회사에 엉뚱한 답을 내는 쪽이 못 찾는 쪽보다 나쁘다.
+     */
+    private static final int MIN_DERIVED_CHARS = 3;
+
     private static final Pattern NOISE = Pattern.compile("[\\s.\\-·_'\"()]+");
     /** 영문·숫자 앞머리. `SK하이닉스`에서 `하이닉스`를 뽑는다. */
     private static final Pattern LATIN_PREFIX = Pattern.compile("^[A-Z0-9&]{2,6}(?=[가-힣])");
@@ -141,25 +151,42 @@ public final class CorpNameResolver {
                 continue;
             }
             String folded = fold(name);
-            addAlias(aliases, folded);
+            addAlias(aliases, folded, MIN_ALIAS_CHARS);
+            addPrefixes(aliases, folded);
             for (String suffix : GROUP_SUFFIXES) {
                 if (folded.endsWith(suffix)) {
-                    addAlias(aliases, folded.substring(0, folded.length() - suffix.length()));
+                    addAlias(aliases,
+                            folded.substring(0, folded.length() - suffix.length()),
+                            MIN_DERIVED_CHARS);
                 }
             }
             Matcher prefix = LATIN_PREFIX.matcher(folded);
             if (prefix.find()) {
-                addAlias(aliases, folded.substring(prefix.end()));
+                addAlias(aliases, folded.substring(prefix.end()), MIN_DERIVED_CHARS);
             }
         }
-        addAlias(aliases, nullToEmpty(identity.stockCode()));
-        addAlias(aliases, nullToEmpty(identity.corpCode()));
+        addAlias(aliases, nullToEmpty(identity.stockCode()), MIN_ALIAS_CHARS);
+        addAlias(aliases, nullToEmpty(identity.corpCode()), MIN_ALIAS_CHARS);
         return aliases;
     }
 
-    private static void addAlias(Set<String> aliases, String alias) {
-        // 한두 글자는 다른 기업 이름 안에 너무 쉽게 들어간다.
-        if (alias != null && alias.length() >= 2) {
+    /**
+     * 앞에서 자른 줄임말. `한화에어로`·`삼성바이오`처럼 실제로 쓰는 표기다.
+     *
+     * <p>여러 기업에 걸리는 조각은 색인에서 자동으로 거부된다. `삼성전`은 삼성전자와
+     * 삼성전기에 함께 걸리므로 고르지 않는다.
+     */
+    private static void addPrefixes(Set<String> aliases, String alias) {
+        if (alias.chars().allMatch(Character::isDigit)) {
+            return;
+        }
+        for (int length = MIN_DERIVED_CHARS; length < alias.length(); length++) {
+            aliases.add(alias.substring(0, length));
+        }
+    }
+
+    private static void addAlias(Set<String> aliases, String alias, int minChars) {
+        if (alias != null && alias.length() >= minChars) {
             aliases.add(alias);
         }
     }

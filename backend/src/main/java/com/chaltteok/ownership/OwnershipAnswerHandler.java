@@ -30,8 +30,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>대표 질문: 삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 지분율은 얼마인가?
  *
- * <p>이력 추적(신규·변경·해소 사슬)은 하지 않는다. 질문의 공시일로 문서를 특정하고,
- * 같은 날 정정본이 있으면 정정본만 남긴다.
+ * <p>공시일만 있으면 그날 문서를 특정하고, 같은 날 정정본이 있으면 정정본만 남긴다.
+ * {@code 어떻게 바뀌었나}처럼 과정을 물으면 같은 보고자의 신규·변경·해소를 시간순으로 잇는다.
  */
 @Component
 @Order(OwnershipAnswerHandler.HANDLER_ORDER)
@@ -81,6 +81,9 @@ public class OwnershipAnswerHandler implements AnswerHandler {
             );
         }
         LocalDate reportDate = resolveReportDate(question);
+        if (parsed.history()) {
+            return handleHistory(parsed, reportDate);
+        }
         if (reportDate == null) {
             return AnswerHandlerResult.unavailable(
                     "기업명=" + parsed.corpName() + ", 공시유형=holding, 서식=" + DOC_SUBTYPE + " 검색",
@@ -132,6 +135,106 @@ public class OwnershipAnswerHandler implements AnswerHandler {
                 .map(fact -> toEvidence(selected.document(), fact))
                 .toList();
         return AnswerHandlerResult.of(evidences, searchSummary + " → " + selected.summary(parsed));
+    }
+
+    /**
+     * 같은 보고자의 신규·변경·해소를 시간순으로 모아 주식 수·지분율이 바뀐 과정을 근거로 남긴다.
+     *
+     * <p>공시일이 있으면 그 날이 들어 있는 사건만 쓰고, 없으면 사건이 하나일 때만 답한다.
+     * 보고자가 다르거나 신규가 다시 나오면 새 사건이다. 추측해서 묶지 않는다.
+     */
+    private AnswerHandlerResult handleHistory(OwnershipQuestion parsed, LocalDate reportDate) {
+        String searchSummary = "기업명=" + parsed.corpName()
+                + ", 공시유형=holding, 서식=" + DOC_SUBTYPE + " 보유 이력 검색";
+        List<DisclosureDocumentEntity> all =
+                documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                        parsed.corpName(), DocGroup.HOLDING, DOC_SUBTYPE);
+        if (all.isEmpty()) {
+            all = documentRepository.findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(
+                    parsed.corpName(), DocGroup.HOLDING);
+        }
+        if (all.isEmpty()) {
+            return AnswerHandlerResult.unavailable(searchSummary, "해당 기업의 대량보유 공시를 찾지 못했습니다");
+        }
+        List<OwnershipHoldingHistory.Step> steps = new ArrayList<>();
+        for (DisclosureDocumentEntity document : all) {
+            List<ExtractedFactEntity> facts = factRepository.findByDocumentDocId(document.getDocId()).stream()
+                    .filter(fact -> fact.getRawValue() != null && !fact.getRawValue().isBlank())
+                    .toList();
+            if (!facts.isEmpty()) {
+                steps.add(OwnershipHoldingHistory.stepOf(document, facts));
+            }
+        }
+        List<List<OwnershipHoldingHistory.Step>> chains = OwnershipHoldingHistory.eventChains(steps);
+        if (chains.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary,
+                    "검색된 공시에서 보고자를 찾지 못해 사건을 잇지 못했습니다"
+            );
+        }
+        List<OwnershipHoldingHistory.Step> chain = OwnershipHoldingHistory.selectChain(chains, reportDate);
+        if (chain == null) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 보고 사건 " + chains.size() + "건",
+                    reportDate == null
+                            ? "여러 보고 사건이 있어 공시일을 특정하지 못했습니다"
+                            : reportDate + " 공시가 들어 있는 대량보유 이력을 한 사건으로 특정하지 못했습니다"
+            );
+        }
+        if (chain.size() < 2) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 변경·해소 이력 없음",
+                    "찾은 대량보유 공시에 변경·해소 이력이 없습니다"
+            );
+        }
+
+        List<OwnershipHoldingHistory.Step> alongChain = new ArrayList<>();
+        for (OwnershipHoldingHistory.Step step : chain) {
+            List<ExtractedFactEntity> matched = step.facts().stream()
+                    .filter(fact -> wantedKeys(parsed).contains(fact.getFactKey()))
+                    .toList();
+            if (!matched.isEmpty()) {
+                alongChain.add(new OwnershipHoldingHistory.Step(
+                        step.document(), step.holder(), step.kind(), step.quantityKey(), matched));
+            }
+        }
+        List<OwnershipHoldingHistory.Step> collapsed = OwnershipHoldingHistory.collapseHistory(alongChain);
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (OwnershipHoldingHistory.Step step : collapsed) {
+            DisclosureDocumentEntity document = step.document();
+            evidences.addAll(step.facts().stream()
+                    .map(fact -> toEvidence(document, fact))
+                    .toList());
+            labels.add(document.getRceptDt()
+                    + (document.isCorrection() ? " 정정" : " " + reportKindLabel(step.kind()))
+                    + " " + step.quantityKey());
+        }
+        if (evidences.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary,
+                    "검색된 공시에서 " + parsed.itemLabel() + " 값을 찾지 못했습니다"
+            );
+        }
+        if (collapsed.size() < 2) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 변경·해소 이력 없음",
+                    "찾은 대량보유 공시에 변경·해소 이력이 없습니다"
+            );
+        }
+        return AnswerHandlerResult.of(
+                evidences,
+                searchSummary + " → " + parsed.itemLabel() + " " + String.join(" → ", labels)
+        );
+    }
+
+    private static String reportKindLabel(OwnershipHoldingHistory.ReportKind kind) {
+        return switch (kind) {
+            case INITIAL -> "신규";
+            case CHANGE -> "변경";
+            case CLEAR -> "해소";
+            case UNKNOWN -> "보고";
+        };
     }
 
     static boolean looksLikeHolding(String question) {

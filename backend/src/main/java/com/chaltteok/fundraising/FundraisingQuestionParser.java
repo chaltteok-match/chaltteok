@@ -2,9 +2,11 @@ package com.chaltteok.fundraising;
 
 import com.chaltteok.answer.CorpNameResolver;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -17,7 +19,9 @@ import java.util.regex.Pattern;
  * 그 목적만 본다. {@code 시설자금을 포함한 총 조달금액}처럼 목적과 마커 사이에
  * 다른 말이 끼면 합계다.
  *
- * <p>{@code 제외한}·{@code 빼고}와 목적·총액 표지가 함께 있으면 그 목적을 뺀 합계다.
+ * <p>{@code 제외한}·{@code 빼고}가 목적 바로 뒤에 있으면 그 목적만 뺀 합계다.
+ * {@code 시설자금을 포함하고 타법인 증권취득을 제외한 총액}처럼 포함과 제외가
+ * 같이 나와도 제외에 붙은 목적만 뺀다. {@code 포함한}만 있으면 전체 합계다.
  * {@code 어떻게 바뀌었나}·{@code 변경된 내역}처럼 바뀐 과정을 물으면 이력 질문이다.
  * {@code 정정한}·{@code 정정공시}만 있으면 그 공시 한 건을 고르는 말로 본다.
  */
@@ -95,7 +99,7 @@ final class FundraisingQuestionParser {
                     history);
         }
         if (asksForTotal(text)) {
-            Set<String> excluded = asksToExclude(text) ? purposesIn(text) : Set.of();
+            Set<String> excluded = excludedPurposes(text);
             return new FundraisingQuestion(
                     corpName, null, totalLabel(excluded), excluded, history);
         }
@@ -122,14 +126,65 @@ final class FundraisingQuestionParser {
         return text.contains("제외") || text.contains("빼고");
     }
 
-    private static Set<String> purposesIn(String text) {
-        Set<String> keys = new LinkedHashSet<>();
-        for (Map.Entry<String, String> entry : PURPOSE_KEYWORDS.entrySet()) {
-            if (text.contains(entry.getKey())) {
-                keys.add(entry.getValue());
+    /**
+     * 목적 표현 뒤에, 다음 목적 전까지 구간에 {@code 제외}·{@code 빼고}가 있으면 뺀다.
+     * 질문에 목적이 여러 개여도 포함에 붙은 쪽은 빼지 않는다.
+     */
+    private static Set<String> excludedPurposes(String text) {
+        if (!asksToExclude(text)) {
+            return Set.of();
+        }
+        List<PurposeSpan> spans = purposeSpans(text);
+        Set<String> excluded = new LinkedHashSet<>();
+        for (int index = 0; index < spans.size(); index++) {
+            PurposeSpan span = spans.get(index);
+            int windowEnd = index + 1 < spans.size() ? spans.get(index + 1).start() : text.length();
+            if (asksToExclude(text.substring(span.end(), windowEnd))) {
+                excluded.add(span.factKey());
             }
         }
-        return keys;
+        return excluded;
+    }
+
+    private static List<PurposeSpan> purposeSpans(String text) {
+        boolean[] covered = new boolean[text.length()];
+        List<PurposeSpan> spans = new ArrayList<>();
+        for (Map.Entry<String, String> entry : PURPOSE_KEYWORDS.entrySet()) {
+            String keyword = entry.getKey();
+            int from = 0;
+            while (true) {
+                int start = text.indexOf(keyword, from);
+                if (start < 0) {
+                    break;
+                }
+                int end = start + keyword.length();
+                if (!covered(covered, start, end)) {
+                    mark(covered, start, end);
+                    spans.add(new PurposeSpan(start, end, entry.getValue()));
+                }
+                from = start + 1;
+            }
+        }
+        spans.sort(Comparator.comparingInt(PurposeSpan::start));
+        return spans;
+    }
+
+    private static boolean covered(boolean[] used, int start, int end) {
+        for (int index = start; index < end; index++) {
+            if (used[index]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void mark(boolean[] used, int start, int end) {
+        for (int index = start; index < end; index++) {
+            used[index] = true;
+        }
+    }
+
+    private record PurposeSpan(int start, int end, String factKey) {
     }
 
     private static String totalLabel(Set<String> excluded) {

@@ -210,6 +210,7 @@ def test_dash_purpose_values_do_not_create_extracted_facts(
         "fundraising_purpose_facility",
         "fundraising_purpose_securities_acquisition",
         "fundraising_outside_director_present",
+        "fundraising_common_planned_issue_price",
     }
 
 

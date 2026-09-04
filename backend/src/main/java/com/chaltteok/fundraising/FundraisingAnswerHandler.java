@@ -66,6 +66,16 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             SECURITIES_ACQUISITION_FACT_KEY,
             OTHER_FACT_KEY
     );
+    static final String NEW_SHARES_FACT_KEY = "fundraising_common_new_shares";
+    static final String PAR_VALUE_FACT_KEY = "fundraising_par_value";
+    static final String ISSUE_PRICE_FACT_KEY = "fundraising_common_issue_price";
+    static final String PLANNED_ISSUE_PRICE_FACT_KEY = "fundraising_common_planned_issue_price";
+    static final Set<String> ISSUANCE_FACT_KEYS = Set.of(
+            NEW_SHARES_FACT_KEY,
+            PAR_VALUE_FACT_KEY,
+            ISSUE_PRICE_FACT_KEY,
+            PLANNED_ISSUE_PRICE_FACT_KEY
+    );
 
     /** 검색 키. 전처리가 공시명에서 뽑아 둔 서식명이다(docs/data-model.md §3). */
     static final String DOC_SUBTYPE = "유상증자결정";
@@ -276,11 +286,10 @@ public class FundraisingAnswerHandler implements AnswerHandler {
     ) {
         List<Candidate> candidates = new ArrayList<>();
         for (DisclosureDocumentEntity document : documents) {
-            List<ExtractedFactEntity> purposes = factRepository.findByDocumentDocId(document.getDocId()).stream()
-                    .filter(fact -> PURPOSE_FACT_KEYS.contains(fact.getFactKey()))
+            List<ExtractedFactEntity> facts = factRepository.findByDocumentDocId(document.getDocId()).stream()
                     .filter(fact -> fact.getNormalizedValue() != null && !fact.getNormalizedValue().isBlank())
                     .toList();
-            List<ExtractedFactEntity> matched = relevantFacts(purposes, parsed);
+            List<ExtractedFactEntity> matched = relevantFacts(facts, parsed);
             if (!matched.isEmpty()) {
                 candidates.add(new Candidate(document, matched));
             }
@@ -289,9 +298,15 @@ public class FundraisingAnswerHandler implements AnswerHandler {
     }
 
     private static List<ExtractedFactEntity> relevantFacts(
-            List<ExtractedFactEntity> purposes,
+            List<ExtractedFactEntity> facts,
             FundraisingQuestion parsed
     ) {
+        if (parsed.factKey() != null && ISSUANCE_FACT_KEYS.contains(parsed.factKey())) {
+            return issuanceFacts(facts, parsed.factKey());
+        }
+        List<ExtractedFactEntity> purposes = facts.stream()
+                .filter(fact -> PURPOSE_FACT_KEYS.contains(fact.getFactKey()))
+                .toList();
         if (!parsed.isTotal()) {
             return purposes.stream()
                     .filter(fact -> parsed.factKey().equals(fact.getFactKey()))
@@ -305,9 +320,36 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                 .toList();
     }
 
+    /**
+     * 확정발행가가 비어 있고 예정발행가만 있는 문서가 있다. 「발행가」는 확정을 먼저 보고
+     * 없으면 예정값을 쓴다.
+     */
+    private static List<ExtractedFactEntity> issuanceFacts(
+            List<ExtractedFactEntity> facts,
+            String factKey
+    ) {
+        if (ISSUE_PRICE_FACT_KEY.equals(factKey)) {
+            List<ExtractedFactEntity> confirmed = facts.stream()
+                    .filter(fact -> ISSUE_PRICE_FACT_KEY.equals(fact.getFactKey()))
+                    .toList();
+            if (!confirmed.isEmpty()) {
+                return confirmed;
+            }
+            return facts.stream()
+                    .filter(fact -> PLANNED_ISSUE_PRICE_FACT_KEY.equals(fact.getFactKey()))
+                    .toList();
+        }
+        return facts.stream()
+                .filter(fact -> factKey.equals(fact.getFactKey()))
+                .toList();
+    }
+
     private static String emptyAmountReason(FundraisingQuestion parsed) {
         if (parsed.excludesPurposes()) {
             return "검색된 공시에서 제외하고 남을 목적별 자금 금액을 찾지 못했습니다";
+        }
+        if (parsed.factKey() != null && ISSUANCE_FACT_KEYS.contains(parsed.factKey())) {
+            return "검색된 공시에서 " + parsed.itemLabel() + " 값을 찾지 못했습니다";
         }
         return parsed.isTotal()
                 ? "검색된 공시에서 합산할 목적별 자금 금액을 찾지 못했습니다"
@@ -441,11 +483,12 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             String docId = document.getDocId();
             if (!parsed.isTotal()) {
                 ExtractedFactEntity fact = facts.getFirst();
-                String key = parsed.factKey();
-                if (SECURITIES_ACQUISITION_FACT_KEY.equals(key)) {
-                    key = key + "(ANC_ACQ_AMT)";
+                String key = fact.getFactKey();
+                if (SECURITIES_ACQUISITION_FACT_KEY.equals(parsed.factKey())) {
+                    key = parsed.factKey() + "(ANC_ACQ_AMT)";
                 }
-                return "문서 " + docId + " 선택 → " + key + "=" + rawAmount(fact) + " 추출";
+                String formatted = formatValue(fact);
+                return "문서 " + docId + " 선택 → " + key + "=" + formatted + " 추출";
             }
             String parts = facts.stream()
                     .map(fact -> fact.getFactKey() + "=" + rawAmount(fact))
@@ -464,8 +507,18 @@ public class FundraisingAnswerHandler implements AnswerHandler {
         }
 
         private static String rawAmount(ExtractedFactEntity fact) {
+            return formatValue(fact);
+        }
+
+        private static String formatValue(ExtractedFactEntity fact) {
             String unit = fact.getRawUnit() == null ? "" : fact.getRawUnit();
-            return fact.getRawValue() + unit;
+            String raw = fact.getRawValue() + unit;
+            if ("KRW".equals(fact.getNormalizedUnit())
+                    && PURPOSE_FACT_KEYS.contains(fact.getFactKey())
+                    && fact.getNormalizedValue() != null) {
+                return raw;
+            }
+            return raw;
         }
     }
 }

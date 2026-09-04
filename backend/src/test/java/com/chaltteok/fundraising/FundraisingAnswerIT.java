@@ -175,6 +175,20 @@ class FundraisingAnswerIT {
     }
 
     @Test
+    void answersNewShareCountFromLoadedFacts() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("보통주식 신주는 4,267,200주입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-FUND-SHARES")
+                        .param("question",
+                                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 신주 수는?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("4,267,200")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("fundraising_common_new_shares")));
+    }
+
+    @Test
     void returns503WhenHcxTimesOut() throws Exception {
         when(hcxClient.generate(any(HcxPrompt.class)))
                 .thenThrow(new HcxClientException(HcxErrorType.TIMEOUT, "read timed out"));

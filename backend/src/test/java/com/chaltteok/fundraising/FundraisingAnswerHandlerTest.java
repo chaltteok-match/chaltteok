@@ -635,6 +635,61 @@ class FundraisingAnswerHandlerTest {
                 .contains("2024-09-30 정정 200000000000원");
     }
 
+    @Test
+    void answersNewShareCount() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(
+                        parValueFact(document),
+                        sharesFact(document),
+                        amountFact(document, "1,600,000,000,000", "1600000000000")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 신주 수는?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("4,267,200");
+        assertThat(result.processSummary())
+                .contains("fundraising_common_new_shares")
+                .doesNotContain("1,600,000,000,000");
+    }
+
+    @Test
+    void fallsBackToPlannedIssuePriceWhenConfirmedIsMissing() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(plannedIssuePriceFact(document)));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 발행가액은?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences().getFirst().evidenceText()).contains("539,000");
+        assertThat(result.processSummary()).contains("fundraising_common_planned_issue_price");
+    }
+
     private static DisclosureDocumentEntity hanwhaFundraisingDocument(
             String docId,
             String rceptNo,
@@ -704,6 +759,32 @@ class FundraisingAnswerHandlerTest {
         fact.setRawValue("5,000");
         fact.setRawUnit("원");
         fact.setNormalizedValue("5000");
+        fact.setNormalizedUnit("KRW");
+        return fact;
+    }
+
+    private static ExtractedFactEntity sharesFact(DisclosureDocumentEntity document) {
+        ExtractedFactEntity fact = new ExtractedFactEntity();
+        fact.setFactId(document.getDocId() + ":fact:shares");
+        fact.setDocument(document);
+        fact.setFactKey(FundraisingAnswerHandler.NEW_SHARES_FACT_KEY);
+        fact.setLabel("1. 신주의 종류와 수 > 보통주식 (주)");
+        fact.setRawValue("4,267,200");
+        fact.setRawUnit("주");
+        fact.setNormalizedValue("4267200");
+        fact.setNormalizedUnit("share");
+        return fact;
+    }
+
+    private static ExtractedFactEntity plannedIssuePriceFact(DisclosureDocumentEntity document) {
+        ExtractedFactEntity fact = new ExtractedFactEntity();
+        fact.setFactId(document.getDocId() + ":fact:planned-price");
+        fact.setDocument(document);
+        fact.setFactKey(FundraisingAnswerHandler.PLANNED_ISSUE_PRICE_FACT_KEY);
+        fact.setLabel("6. 신주 발행가액 > 예정발행가 > 보통주식 (원)");
+        fact.setRawValue("539,000");
+        fact.setRawUnit("원");
+        fact.setNormalizedValue("539000");
         fact.setNormalizedUnit("KRW");
         return fact;
     }

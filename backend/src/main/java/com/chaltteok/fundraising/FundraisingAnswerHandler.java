@@ -460,8 +460,14 @@ public class FundraisingAnswerHandler implements AnswerHandler {
 
     private static String evidenceText(ExtractedFactEntity fact) {
         String unit = fact.getRawUnit() == null ? "" : fact.getRawUnit();
+        String label = fact.getLabel();
+        if (PLANNED_ISSUE_PRICE_FACT_KEY.equals(fact.getFactKey())
+                && label != null
+                && !label.contains("예정발행가")) {
+            label = "예정발행가(확정값 아님) | " + label;
+        }
         StringBuilder text = new StringBuilder()
-                .append(fact.getLabel())
+                .append(label)
                 .append(": ")
                 .append(fact.getRawValue())
                 .append(unit);
@@ -492,6 +498,9 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                 String key = fact.getFactKey();
                 if (SECURITIES_ACQUISITION_FACT_KEY.equals(parsed.factKey())) {
                     key = parsed.factKey() + "(ANC_ACQ_AMT)";
+                }
+                if (PLANNED_ISSUE_PRICE_FACT_KEY.equals(fact.getFactKey())) {
+                    key = PLANNED_ISSUE_PRICE_FACT_KEY + "(예정발행가)";
                 }
                 String formatted = formatValue(fact);
                 return "문서 " + docId + " 선택 → " + key + "=" + formatted + " 추출";

@@ -1,7 +1,9 @@
-"""DART XML(dart4.xsd) 표에서 TE 칸을 읽는다.
+"""DART XML(dart4.xsd) 표에서 TE·TU 칸을 읽는다.
 
-유상증자·지분공시·자기주식 파서가 같은 표 구조를 쓴다. 원문 파일은 바꾸지 않고
-입력 문자열만 고쳐 ET.parse가 실패하지 않게 한다(docs/data-model.md §9).
+지분공시 파서가 같은 표 구조를 쓴다. `periodic/dart_xml.py`와는 역할이 다르다
+(정규식으로 본문을 자르지 않고 ElementTree로 표를 읽는다). 유상증자 파서는 아직
+자체 ElementTree를 쓴다. 원문 파일은 바꾸지 않고 입력 문자열만 고쳐 ET.parse가
+실패하지 않게 한다(docs/data-model.md §9).
 """
 
 from __future__ import annotations
@@ -102,11 +104,11 @@ def _extract_table_cells(table: ET.Element, section_title: str | None) -> list[D
             text = element_text(child)
             colspan = _int_attr(child, "COLSPAN")
             rowspan = _int_attr(child, "ROWSPAN")
-            acode = child.get("ACODE")
+            acode = child.get("ACODE") or child.get("AUNIT")
 
             if child.tag in {"TD", "TH"} and text:
                 labels_before_value.append(readable_label(text))
-            elif child.tag == "TE" and (acode or text):
+            elif child.tag in {"TE", "TU"} and (acode or text):
                 row_label = labels_before_value[0] if labels_before_value else None
                 column_label = (
                     labels_before_value[-1] if len(labels_before_value) > 1 else None
@@ -175,7 +177,7 @@ def collect_body_text(root: ET.Element) -> str:
     parts: list[str] = []
     seen: set[str] = set()
     for element in start.iter():
-        if element.tag not in {"P", "TD", "TH", "TE", "TITLE"}:
+        if element.tag not in {"P", "TD", "TH", "TE", "TU", "TITLE"}:
             continue
         if element.tag in {"TITLE", "P"} and len(list(element)):
             continue

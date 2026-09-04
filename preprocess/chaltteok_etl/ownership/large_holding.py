@@ -32,7 +32,7 @@ from chaltteok_etl.common.dart_xml import (
 )
 
 SCHEMA_VERSION = "0.2"
-PARSER_VERSION = "0.1.0"
+PARSER_VERSION = "0.1.1"
 
 DOCUMENT_NAME_MARK = "대량보유상황보고서"
 
@@ -42,17 +42,17 @@ RATIO_FACT_KEY = "ownership_ratio"
 REPORT_TYPE_FACT_KEY = "ownership_report_type"
 PURPOSE_FACT_KEY = "ownership_purpose"
 
+# 코퍼스 대량보유상황보고서 실제 칸. 직전 보고서(BFR_*)·최대주주 지분율(SUB_LRT)은 넣지 않는다.
 ACODE_FACT_KEYS: dict[str, str] = {
+    "RPT_RSP_NM": HOLDER_FACT_KEY,
+    "THS_STK_CNT": SHARES_FACT_KEY,
+    "THS_STK_RT": RATIO_FACT_KEY,
+    "RPT_DST1": REPORT_TYPE_FACT_KEY,
+    "PUR_OWN": PURPOSE_FACT_KEY,
     "RPROR": HOLDER_FACT_KEY,
     "REPROR": HOLDER_FACT_KEY,
     "STKQY": SHARES_FACT_KEY,
     "STKQTY": SHARES_FACT_KEY,
-    "STKRT": RATIO_FACT_KEY,
-    "HLD_RT": RATIO_FACT_KEY,
-    "REPORT_TP": REPORT_TYPE_FACT_KEY,
-    "RPT_TP": REPORT_TYPE_FACT_KEY,
-    "REPORT_RESN": PURPOSE_FACT_KEY,
-    "RPT_RESN": PURPOSE_FACT_KEY,
     "HLD_PURP": PURPOSE_FACT_KEY,
 }
 
@@ -69,10 +69,14 @@ _LABEL_FACT_KEYS: tuple[tuple[str, str], ...] = (
     ("보유비율", RATIO_FACT_KEY),
     ("지분율", RATIO_FACT_KEY),
     ("보고구분", REPORT_TYPE_FACT_KEY),
-    ("보고사유", PURPOSE_FACT_KEY),
     ("보유목적", PURPOSE_FACT_KEY),
     ("보고자", HOLDER_FACT_KEY),
 )
+
+_SKIP_LABEL_FRAGMENTS: dict[str, tuple[str, ...]] = {
+    SHARES_FACT_KEY: ("직전", "최대주주"),
+    RATIO_FACT_KEY: ("직전", "최대주주"),
+}
 
 
 @dataclass(frozen=True)
@@ -114,27 +118,37 @@ def _assert_holding_form(root) -> None:
 
 
 def _unique_mapped_cells(cells: list[DartCell]) -> list[_MappedCell]:
-    mapped: list[_MappedCell] = []
-    seen: set[str] = set()
+    chosen: dict[str, tuple[bool, DartCell]] = {}
+    order: list[str] = []
     for cell in cells:
         if is_missing_value(cell.raw_value):
             continue
-        fact_key = _fact_key_for(cell)
-        if fact_key is None or fact_key in seen:
+        fact_key, via_acode = _fact_key_for(cell)
+        if fact_key is None:
             continue
-        seen.add(fact_key)
-        mapped.append(_MappedCell(fact_key, cell))
-    return mapped
+        existing = chosen.get(fact_key)
+        if existing is None:
+            chosen[fact_key] = (via_acode, cell)
+            order.append(fact_key)
+            continue
+        existing_via_acode, _ = existing
+        if via_acode and not existing_via_acode:
+            chosen[fact_key] = (True, cell)
+    return [_MappedCell(fact_key, chosen[fact_key][1]) for fact_key in order]
 
 
-def _fact_key_for(cell: DartCell) -> str | None:
+def _fact_key_for(cell: DartCell) -> tuple[str | None, bool]:
     if cell.acode and cell.acode in ACODE_FACT_KEYS:
-        return ACODE_FACT_KEYS[cell.acode]
+        return ACODE_FACT_KEYS[cell.acode], True
     label = cell.combined_label
     for keyword, fact_key in _LABEL_FACT_KEYS:
-        if keyword in label:
-            return fact_key
-    return None
+        if keyword not in label:
+            continue
+        skipped = _SKIP_LABEL_FRAGMENTS.get(fact_key, ())
+        if any(fragment in label for fragment in skipped) and "이번" not in label:
+            continue
+        return fact_key, False
+    return None, False
 
 
 def _to_chunk(cell: DartCell, doc_id: str, sequence: int, source_file: str) -> EvidenceChunk:

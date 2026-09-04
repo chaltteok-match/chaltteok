@@ -51,7 +51,7 @@ def test_extracts_holder_shares_ratio_and_purpose(tmp_path: Path) -> None:
         tmp_path,
         "<BODY><TABLE><TBODY>"
         '<TR><TD>대표보고자</TD><TE ACODE="RPROR">국민연금공단</TE></TR>'
-        '<TR><TD>보고구분</TD><TE ACODE="RPT_TP">변경</TE></TR>'
+        '<TR><TD>보고구분</TD><TU AUNIT="RPT_DST1" AUNITVALUE="3">변경</TU></TR>'
         '<TR><TD>보유주식등의 수 (주)</TD><TE ACODE="STKQY">50,000,000</TE></TR>'
         '<TR><TD>보유비율 (%)</TD><TE ACODE="STKRT">8.25</TE></TR>'
         '<TR><TD>보유목적</TD><TE ACODE="HLD_PURP">단순투자</TE></TR>'
@@ -108,3 +108,109 @@ def test_source_file_is_posix_under_document_path(tmp_path: Path) -> None:
     assert result.evidence_chunks[0].source_file == (
         str(PurePosixPath(document.source_path) / source.name)
     )
+
+
+def test_uses_this_report_acodes_not_previous_or_largest_shareholder(tmp_path: Path) -> None:
+    source = _write(
+        tmp_path,
+        "<BODY>"
+        "<TABLE><TBODY>"
+        '<TR><TD>보고자 :</TD><TE ACODE="RPT_RSP_NM">삼성물산주식회사</TE></TR>'
+        '<TR><TD>보고구분</TD><TU AUNIT="RPT_DST1" AUNITVALUE="4">변동ㆍ변경</TU></TR>'
+        '<TR><TD>최대주주 지분율(%)</TD><TE ACODE="SUB_LRT">18.13</TE></TR>'
+        "</TBODY></TABLE>"
+        "<TABLE><THEAD><TR><TH>구분</TH><TH>보유주식등의 수</TH><TH>보유비율</TH></TR></THEAD><TBODY>"
+        '<TR><TD>직전 보고서</TD><TE ACODE="BFR_STK_CNT">1,238,767,819</TE>'
+        '<TE ACODE="BFR_STK_RT">20.75</TE></TR>'
+        '<TR><TD>이번 보고서</TD><TE ACODE="THS_STK_CNT">1,237,964,708</TE>'
+        '<TE ACODE="THS_STK_RT">20.74</TE></TR>'
+        "</TBODY></TABLE>"
+        '<SECTION-2><TITLE>4. 보유목적</TITLE>'
+        '<TABLE><TBODY><TR><TU AUNIT="PUR_OWN" AUNITVALUE="01">경영권 영향</TU></TR></TBODY></TABLE>'
+        "</SECTION-2>"
+        "<TABLE><TBODY>"
+        "<TR><TD>보고사유</TD><TE>단순 매매</TE></TR>"
+        "</TBODY></TABLE>"
+        "</BODY>",
+    )
+
+    result = parse_large_holding(source, make_document())
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+
+    assert by_key["ownership_holder"].raw_value == "삼성물산주식회사"
+    assert by_key["ownership_shares"].normalized_value == "1237964708"
+    assert by_key["ownership_ratio"].normalized_value == "20.74"
+    assert by_key["ownership_report_type"].raw_value == "변동ㆍ변경"
+    assert by_key["ownership_purpose"].raw_value == "경영권 영향"
+
+
+def test_acode_this_report_overrides_earlier_vote_count_label(tmp_path: Path) -> None:
+    source = _write(
+        tmp_path,
+        "<BODY>"
+        "<TABLE><TBODY>"
+        '<TR><TD>의결권의 수 및 보유비율</TD><TD>이번 보고서</TD>'
+        '<TE ACODE="VR_TMT_CNT">191,500,000</TE>'
+        '<TE ACODE="VR_TMT_RT">81.84</TE></TR>'
+        '<TR><TD>이번보고서</TD><TE ACODE="THS_STK_CNT">191,500,000</TE>'
+        '<TE ACODE="THS_STK_RT">81.84</TE></TR>'
+        "</TBODY></TABLE></BODY>",
+    )
+    result = parse_large_holding(source, make_document())
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+    assert by_key["ownership_ratio"].normalized_value == "81.84"
+    assert by_key["ownership_shares"].normalized_value == "191500000"
+
+
+def test_label_fallback_picks_this_report_column(tmp_path: Path) -> None:
+    source = _write(
+        tmp_path,
+        "<BODY><TABLE><TBODY>"
+        "<TR><TD>보유주식등의 수</TD><TD>직전 보고서</TD><TE>59,508,387</TE>"
+        "<TD>이번 보고서</TD><TE>56,349,109</TE></TR>"
+        "<TR><TD>보유비율</TD><TD>직전 보고서</TD><TE>8.17</TE>"
+        "<TD>이번 보고서</TD><TE>7.74</TE></TR>"
+        "<TR><TD>최대주주 지분율</TD><TE>18.13</TE></TR>"
+        "</TBODY></TABLE></BODY>",
+    )
+
+    result = parse_large_holding(source, make_document())
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+
+    assert by_key["ownership_shares"].normalized_value == "56349109"
+    assert by_key["ownership_ratio"].normalized_value == "7.74"
+
+
+def _corpus_xml(rcept_no: str) -> Path | None:
+    corpus = Path("/Users/sn15d/Documents/spring/chaltteok-main/corpus/raw/holding")
+    matches = list(corpus.rglob(f"{rcept_no}.xml"))
+    return matches[0] if matches else None
+
+
+@pytest.mark.skipif(
+    _corpus_xml("20230120000563") is None,
+    reason="holding corpus XML is not checked out",
+)
+def test_samsung_corpus_this_report_ratio() -> None:
+    source = _corpus_xml("20230120000563")
+    assert source is not None
+    result = parse_large_holding(source, make_document())
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+    assert by_key["ownership_shares"].normalized_value == "1237964708"
+    assert by_key["ownership_ratio"].normalized_value == "20.74"
+    assert by_key["ownership_holder"].raw_value == "삼성물산주식회사"
+    assert by_key["ownership_purpose"].raw_value == "경영권 영향"
+
+
+@pytest.mark.skipif(
+    _corpus_xml("20230607000335") is None,
+    reason="holding corpus XML is not checked out",
+)
+def test_sk_hynix_corpus_this_report_ratio() -> None:
+    source = _corpus_xml("20230607000335")
+    assert source is not None
+    result = parse_large_holding(source, make_document())
+    by_key = {fact.fact_key: fact for fact in result.extracted_facts}
+    assert by_key["ownership_shares"].normalized_value == "56349109"
+    assert by_key["ownership_ratio"].normalized_value == "7.74"
+    assert by_key["ownership_purpose"].raw_value == "단순투자"

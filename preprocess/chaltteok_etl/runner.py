@@ -26,6 +26,7 @@ from .common.manifest import (
 from .common.models import PreprocessResult
 from .exchange.corrections import link_corrections
 from .exchange.krx_forms import parse_exchange_disclosure
+from .material.bond_issuance import parse_bond_issuance
 from .material.paid_in_capital import parse_paid_in_capital_increase
 from .material.treasury_acquisition import parse_treasury_stock_acquisition
 from .ownership.large_holding import parse_large_holding
@@ -41,6 +42,8 @@ Linker = Callable[[list[PreprocessResult]], list[PreprocessResult]]
 _MAJOR_PARSERS = {
     "유상증자결정": parse_paid_in_capital_increase,
     "자기주식취득결정": parse_treasury_stock_acquisition,
+    "전환사채권발행결정": parse_bond_issuance,
+    "교환사채권발행결정": parse_bond_issuance,
 }
 
 
@@ -95,7 +98,7 @@ PARSERS: dict[str, ParserEntry] = {
     ),
     "major": ParserEntry(
         parse=_parse_major,
-        # 유상증자결정·자기주식취득결정만 파서가 있다. 나머지 서식은 아직 대상이 아니다.
+        # 유상증자·자기주식취득·전환사채·교환사채만 파서가 있다. 나머지 서식은 아직 대상이 아니다.
         supports=lambda row: resolve_doc_subtype(row) in _MAJOR_PARSERS,
     ),
     "exchange": ParserEntry(

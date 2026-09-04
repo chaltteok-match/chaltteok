@@ -49,13 +49,21 @@ class HcxConfiguration {
                 .maxTokens(properties.getMaxTokens())
                 .build();
 
+        // Spring AI 안쪽 재시도는 끈다. 재시도는 RetryingHcxClient가 한 곳에서 맡는다.
         var chatModel = OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
                 .defaultOptions(options)
                 .retryTemplate(RetryTemplate.builder().maxAttempts(1).build())
                 .build();
 
-        return new SpringAiHcxClient(chatModel);
+        return new RetryingHcxClient(
+                new SpringAiHcxClient(chatModel),
+                properties.getRetryMaxAttempts(),
+                Duration.ofMillis(properties.getRetryInitialIntervalMillis()),
+                properties.getRetryMultiplier(),
+                Duration.ofMillis(properties.getRetryMaxIntervalMillis()),
+                Duration.ofSeconds(properties.getRetryMaxElapsedSeconds()),
+                duration -> Thread.sleep(duration.toMillis()));
     }
 
     @Bean

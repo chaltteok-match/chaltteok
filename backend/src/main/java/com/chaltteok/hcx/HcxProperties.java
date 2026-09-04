@@ -34,6 +34,71 @@ public class HcxProperties {
     @Min(1)
     private int timeoutSeconds = 30;
 
+    /**
+     * 한 질문에 HCX를 부르는 최대 횟수(첫 호출 포함). 1이면 재시도하지 않는다.
+     * 429·타임아웃·5xx에만 다시 건다.
+     */
+    @Min(1)
+    private int retryMaxAttempts = 3;
+
+    /** 첫 재시도까지 기다리는 시간(ms). 이후 {@code retryMultiplier}만큼 늘어난다. */
+    @Min(0)
+    private long retryInitialIntervalMillis = 1_000;
+
+    @DecimalMin("1.0")
+    private double retryMultiplier = 2.0;
+
+    @Min(0)
+    private long retryMaxIntervalMillis = 8_000;
+
+    /**
+     * 재시도 대기에 쓸 수 있는 총 시간(초). 평가 서버 응답 타임아웃이 300초라
+     * 호출 자체에 쓰는 시간을 빼고도 남도록 넉넉히 잡는다.
+     * 서버가 큰 {@code Retry-After}를 줘도 이 예산을 넘기면 기다리지 않고 실패한다.
+     */
+    @Min(0)
+    private long retryMaxElapsedSeconds = 120;
+
+    public int getRetryMaxAttempts() {
+        return retryMaxAttempts;
+    }
+
+    public void setRetryMaxAttempts(int retryMaxAttempts) {
+        this.retryMaxAttempts = retryMaxAttempts;
+    }
+
+    public long getRetryInitialIntervalMillis() {
+        return retryInitialIntervalMillis;
+    }
+
+    public void setRetryInitialIntervalMillis(long retryInitialIntervalMillis) {
+        this.retryInitialIntervalMillis = retryInitialIntervalMillis;
+    }
+
+    public double getRetryMultiplier() {
+        return retryMultiplier;
+    }
+
+    public void setRetryMultiplier(double retryMultiplier) {
+        this.retryMultiplier = retryMultiplier;
+    }
+
+    public long getRetryMaxIntervalMillis() {
+        return retryMaxIntervalMillis;
+    }
+
+    public void setRetryMaxIntervalMillis(long retryMaxIntervalMillis) {
+        this.retryMaxIntervalMillis = retryMaxIntervalMillis;
+    }
+
+    public long getRetryMaxElapsedSeconds() {
+        return retryMaxElapsedSeconds;
+    }
+
+    public void setRetryMaxElapsedSeconds(long retryMaxElapsedSeconds) {
+        this.retryMaxElapsedSeconds = retryMaxElapsedSeconds;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

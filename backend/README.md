@@ -114,6 +114,19 @@ export HCX_API_KEY
 | `HCX_TEMPERATURE` | `0.1` | 생성 다양성 |
 | `HCX_MAX_TOKENS` | `1024` | 최대 출력 토큰 수 |
 | `HCX_TIMEOUT_SECONDS` | `30` | 연결·응답 제한 시간 |
+| `HCX_RETRY_MAX_ATTEMPTS` | `3` | 한 질문에 부르는 최대 횟수(첫 호출 포함). `1`이면 재시도하지 않음 |
+| `HCX_RETRY_INITIAL_INTERVAL_MILLIS` | `1000` | 첫 재시도까지 대기 |
+| `HCX_RETRY_MULTIPLIER` | `2.0` | 대기 증가 배수 |
+| `HCX_RETRY_MAX_INTERVAL_MILLIS` | `8000` | 한 번에 기다리는 최대 시간 |
+| `HCX_RETRY_MAX_ELAPSED_SECONDS` | `120` | 재시도 대기에 쓸 수 있는 총 시간 |
+
+429·타임아웃·5xx는 지수 백오프로 다시 겁니다. 인증·설정 오류와 빈 응답은 다시 걸어도 같은
+결과라 즉시 실패합니다. 서버가 `Retry-After`를 주면 그 값을 따르되, 총 대기가
+`HCX_RETRY_MAX_ELAPSED_SECONDS`를 넘길 상황이면 기다리지 않고 실패합니다. 평가 서버 응답
+타임아웃 300초를 넘기지 않기 위해서입니다.
+
+재시도를 다 써도 실패하면 지금처럼 503으로 나갑니다. 근거를 찾았는데 문장만 못 만든 것을
+「답변 불가」로 내보내면 시스템 실패를 정상 답변으로 위장하는 것이라 그렇게 하지 않습니다.
 
 ### 자동 테스트
 

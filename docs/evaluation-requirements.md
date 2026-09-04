@@ -94,7 +94,22 @@
 | --- | --- | --- |
 | 응답 항목이 모두 string | `AnswerSuccessResponse` 5개 필드 전부 `String` | 맞음 |
 | 타임아웃 300초 안에 응답 | `HCX_TIMEOUT_SECONDS` 기본 30초 | 맞음. 여유 있음 |
-| 429 대응 | `RetryTemplate.maxAttempts(1)`. 재시도하지 않는다 | 손봐야 함 |
+| 429 대응 | 429·타임아웃·5xx를 지수 백오프로 3회까지 재시도 | 맞음 |
 | `maxTokens` | `HCX_MAX_TOKENS` 기본 1024 | 측정 후 조정 |
 
-429는 `HcxErrorType.RATE_LIMIT` → `ServiceUnavailableException` → 503으로 나간다. 주최측이 5xx에 재시도 2회를 하므로 한 번의 429가 곧바로 실점은 아니지만, 우리 쪽 재시도가 없다는 것은 그대로다.
+429는 `HcxErrorType.RATE_LIMIT` → `ServiceUnavailableException` → 503으로 나간다. 주최측이 5xx에
+재시도 2회를 하지만 「429로 답변에 실패해도 구제하지 않는다」가 공지 내용이므로 우리 쪽에서 먼저 막는다.
+
+`RetryingHcxClient`가 한 곳에서 재시도를 맡는다(Spring AI 안쪽 재시도는 꺼 둔다).
+
+- 다시 거는 것: `RATE_LIMIT`(429) · `TIMEOUT` · `UPSTREAM`(5xx)
+- 즉시 실패: `AUTHENTICATION` · `CONFIGURATION` · `INVALID_RESPONSE` — 다시 걸어도 같다
+- 대기는 1초에서 2배씩, 한 번에 최대 8초. `Retry-After` 헤더가 있으면 그 값을 따른다
+- 총 대기 예산 120초. 서버가 큰 `Retry-After`를 줘도 예산을 넘길 대기는 하지 않고 실패한다
+
+최악의 경우에도 시도 3회 × 호출 타임아웃 30초 + 대기 예산 120초 = **210초**로 평가 타임아웃
+300초 안이다. 기본 백오프만 쓰면 대기는 1초 + 2초뿐이다.
+
+재시도를 다 써도 실패하면 503으로 나간다. 근거를 찾았는데 문장만 못 만든 것을 답변 불가로
+내보내면 시스템 실패를 정상 답변으로 위장하는 것이라 그렇게 하지 않는다
+(`docs/data-model.md` §9와 같은 이유).

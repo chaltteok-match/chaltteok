@@ -699,6 +699,91 @@ class FundraisingAnswerHandlerTest {
     }
 
     @Test
+    void answersOtherClassShareCountWhenCommonSharesAreMissing() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(
+                        parValueFact(document),
+                        otherClassSharesFact(document),
+                        amountFact(document, "1,600,000,000,000", "1600000000000")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 신주 수는?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("종류주식");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("1,200,000");
+        assertThat(result.processSummary())
+                .contains("fundraising_other_class_new_shares")
+                .doesNotContain("fundraising_common_new_shares");
+    }
+
+    @Test
+    void prefersCommonShareCountWhenBothClassesExist() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(sharesFact(document), otherClassSharesFact(document)));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 신주 수는?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("4,267,200");
+        assertThat(result.evidences().getFirst().evidenceText()).doesNotContain("1,200,000");
+        assertThat(result.processSummary()).contains("fundraising_common_new_shares");
+    }
+
+    @Test
+    void answersOtherClassWhenQuestionNamesThatClass() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any()
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(sharesFact(document), otherClassSharesFact(document)));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자의 종류주식 신주 수는?"
+        );
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("1,200,000");
+        assertThat(result.processSummary())
+                .contains("fundraising_other_class_new_shares")
+                .doesNotContain("fundraising_common_new_shares");
+    }
+
+    @Test
     void fallsBackToPlannedIssuePriceWhenConfirmedIsMissing() {
         DisclosureDocumentEntity document = hanwhaFundraisingDocument(
                 "major_20250408000012",
@@ -804,6 +889,19 @@ class FundraisingAnswerHandlerTest {
         fact.setRawValue("4,267,200");
         fact.setRawUnit("주");
         fact.setNormalizedValue("4267200");
+        fact.setNormalizedUnit("share");
+        return fact;
+    }
+
+    private static ExtractedFactEntity otherClassSharesFact(DisclosureDocumentEntity document) {
+        ExtractedFactEntity fact = new ExtractedFactEntity();
+        fact.setFactId(document.getDocId() + ":fact:other-shares");
+        fact.setDocument(document);
+        fact.setFactKey(FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY);
+        fact.setLabel("1. 신주의 종류와 수 > 종류주식 (주)");
+        fact.setRawValue("1,200,000");
+        fact.setRawUnit("주");
+        fact.setNormalizedValue("1200000");
         fact.setNormalizedUnit("share");
         return fact;
     }

@@ -69,11 +69,13 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             OTHER_FACT_KEY
     );
     static final String NEW_SHARES_FACT_KEY = "fundraising_common_new_shares";
+    static final String OTHER_CLASS_NEW_SHARES_FACT_KEY = "fundraising_other_class_new_shares";
     static final String PAR_VALUE_FACT_KEY = "fundraising_par_value";
     static final String ISSUE_PRICE_FACT_KEY = "fundraising_common_issue_price";
     static final String PLANNED_ISSUE_PRICE_FACT_KEY = "fundraising_common_planned_issue_price";
     static final Set<String> ISSUANCE_FACT_KEYS = Set.of(
             NEW_SHARES_FACT_KEY,
+            OTHER_CLASS_NEW_SHARES_FACT_KEY,
             PAR_VALUE_FACT_KEY,
             ISSUE_PRICE_FACT_KEY,
             PLANNED_ISSUE_PRICE_FACT_KEY
@@ -308,7 +310,7 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             FundraisingQuestion parsed
     ) {
         if (parsed.factKey() != null && ISSUANCE_FACT_KEYS.contains(parsed.factKey())) {
-            return issuanceFacts(facts, parsed.factKey());
+            return issuanceFacts(facts, parsed);
         }
         List<ExtractedFactEntity> purposes = facts.stream()
                 .filter(fact -> PURPOSE_FACT_KEYS.contains(fact.getFactKey()))
@@ -329,11 +331,16 @@ public class FundraisingAnswerHandler implements AnswerHandler {
     /**
      * 확정발행가가 비어 있고 예정발행가만 있는 문서가 있다. 「발행가」는 확정을 먼저 보고
      * 없으면 예정값을 쓴다.
+     *
+     * <p>「신주 수」는 보통주식이 있으면 보통주식만 쓴다. 보통주가 없고 종류주식만 있으면
+     * 종류주식을 쓰고, 둘을 하나의 숫자로 더하지 않는다. 「종류주식」을 물은 질문은
+     * 종류주식만 본다.
      */
     private static List<ExtractedFactEntity> issuanceFacts(
             List<ExtractedFactEntity> facts,
-            String factKey
+            FundraisingQuestion parsed
     ) {
+        String factKey = parsed.factKey();
         if (ISSUE_PRICE_FACT_KEY.equals(factKey)) {
             List<ExtractedFactEntity> confirmed = facts.stream()
                     .filter(fact -> ISSUE_PRICE_FACT_KEY.equals(fact.getFactKey()))
@@ -343,6 +350,22 @@ public class FundraisingAnswerHandler implements AnswerHandler {
             }
             return facts.stream()
                     .filter(fact -> PLANNED_ISSUE_PRICE_FACT_KEY.equals(fact.getFactKey()))
+                    .toList();
+        }
+        if (OTHER_CLASS_NEW_SHARES_FACT_KEY.equals(factKey)) {
+            return facts.stream()
+                    .filter(fact -> OTHER_CLASS_NEW_SHARES_FACT_KEY.equals(fact.getFactKey()))
+                    .toList();
+        }
+        if (NEW_SHARES_FACT_KEY.equals(factKey)) {
+            List<ExtractedFactEntity> common = facts.stream()
+                    .filter(fact -> NEW_SHARES_FACT_KEY.equals(fact.getFactKey()))
+                    .toList();
+            if (!common.isEmpty()) {
+                return common;
+            }
+            return facts.stream()
+                    .filter(fact -> OTHER_CLASS_NEW_SHARES_FACT_KEY.equals(fact.getFactKey()))
                     .toList();
         }
         return facts.stream()

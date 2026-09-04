@@ -177,5 +177,11 @@ class FundraisingQuestionParserTest {
         assertThat(FundraisingQuestionParser.parse(
                 "한화에어로스페이스 유상증자 예정발행가는?", CORPS).factKey())
                 .isEqualTo(FundraisingAnswerHandler.PLANNED_ISSUE_PRICE_FACT_KEY);
+        assertThat(FundraisingQuestionParser.parse(
+                "알테오젠 유상증자 종류주식 신주 수는?", CORPS).factKey())
+                .isEqualTo(FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY);
+        assertThat(FundraisingQuestionParser.parse(
+                "파마리서치 유상증자 기타주식 수는?", CORPS).factKey())
+                .isEqualTo(FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY);
     }
 }

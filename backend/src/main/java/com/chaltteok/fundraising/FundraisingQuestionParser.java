@@ -1,9 +1,10 @@
 package com.chaltteok.fundraising;
 
+import com.chaltteok.answer.CorpNameResolver;
+
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -51,9 +52,9 @@ final class FundraisingQuestionParser {
     private FundraisingQuestionParser() {
     }
 
-    static FundraisingQuestion parse(String question, List<String> knownCorpNames) {
+    static FundraisingQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
-        String corpName = longestMatch(text, knownCorpNames);
+        String corpName = corpNames.resolve(text);
         boolean history = HISTORY.matcher(text).find();
         String purposeAttachedToMarker = purposeImmediatelyFollowedByTotalMarker(text);
         if (purposeAttachedToMarker != null) {
@@ -142,14 +143,4 @@ final class FundraisingQuestionParser {
         return false;
     }
 
-    private static String longestMatch(String text, List<String> candidates) {
-        String best = null;
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank() && text.contains(candidate)
-                    && (best == null || candidate.length() > best.length())) {
-                best = candidate;
-            }
-        }
-        return best;
-    }
 }

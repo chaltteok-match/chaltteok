@@ -19,7 +19,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
@@ -57,17 +59,39 @@ public class FinancialAnswerHandler implements AnswerHandler {
     @Transactional(readOnly = true)
     public boolean supports(String question) {
         FinancialQuestion parsed = parse(question);
-        return parsed.corpName() != null && parsed.factKey() != null;
+        if (parsed.factKey() == null) {
+            return false;
+        }
+        // 기업 이름이 없어도 `매출액이 가장 큰 기업은?`은 정기공시 항목을 묻는 질문이다.
+        // 나서지 않으면 왜 답할 수 없는지 대신 기본 문구가 나간다.
+        return parsed.corpName() != null || parsed.wantsCorpRanking();
     }
 
     @Override
     @Transactional(readOnly = true)
     public AnswerHandlerResult handle(String questionId, String question) {
         FinancialQuestion parsed = parse(question);
+        if (parsed.wantsCorpRanking()) {
+            // 근거를 댈 수 있는 것은 질문에 이름이 나온 기업뿐이다. 70개사를 훑어 순위를 매기면
+            // 적재되지 않은 기업이 빠진 채 「가장 크다」고 답하게 된다.
+            return AnswerHandlerResult.unavailable(
+                    "질문이 코퍼스 전체 비교를 요구함 → 이름이 나온 기업만으로는 답할 수 없음",
+                    "제공된 공시 데이터로는 기업 전체를 견주어 순위를 답할 수 없습니다."
+                            + " 비교할 기업을 두 곳 이상 지정해 주세요");
+        }
+        if (parsed.lostCounterpart()) {
+            return AnswerHandlerResult.unavailable(
+                    "비교 상대 기업을 코퍼스에서 찾지 못함 → 한 기업 수치로 비교하지 않음",
+                    "%s 외에 비교할 기업을 제공된 공시 데이터에서 찾지 못했습니다"
+                            .formatted(parsed.corpName()));
+        }
         if (!parsed.isAnswerable()) {
             return AnswerHandlerResult.unavailable(
                     "질문에서 기업·연도·항목을 식별하는 중",
                     missingPartsOf(parsed));
+        }
+        if (parsed.isCorpComparison()) {
+            return corpComparison(parsed);
         }
 
         String summaryPrefix = "%s·%d년·%s·%s기준 식별".formatted(
@@ -118,6 +142,91 @@ public class FinancialAnswerHandler implements AnswerHandler {
         return parsed.isComparison()
                 ? comparison(parsed, document, facts, targetFact, searchSummary)
                 : single(parsed, document, targetFact, searchSummary);
+    }
+
+    /**
+     * 질문에 나온 기업끼리 같은 연도·항목·기준으로 견준다.
+     *
+     * <p>한 기업이라도 수치를 못 찾으면 답변 불가다. 찾은 쪽 수치만 근거로 내보내면 모델이
+     * 나머지를 지어내 비교 답을 만든다. 어느 기업이 왜 빠졌는지 밝힌다.
+     */
+    private AnswerHandlerResult corpComparison(FinancialQuestion parsed) {
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        Map<String, BigDecimal> values = new LinkedHashMap<>();
+        List<String> missing = new ArrayList<>();
+        StringBuilder summary = new StringBuilder("%s·%d년·%s·%s기준 비교 식별".formatted(
+                joinCorpNames(parsed.corpNames()), parsed.targetYear(),
+                parsed.itemLabel(), scopeText(parsed.scope())));
+
+        for (String corpName : parsed.corpNames()) {
+            Optional<DisclosureDocumentEntity> found = selectDocument(parsed, corpName);
+            if (found.isEmpty()) {
+                missing.add("%s%s %d년 정기공시가 없습니다".formatted(
+                        corpName, KoreanParticle.topic(corpName), parsed.targetYear()));
+                continue;
+            }
+            DisclosureDocumentEntity document = found.get();
+            List<ExtractedFactEntity> facts = factRepository.findForAnswer(
+                    document.getDocId(), parsed.factKey(), parsed.scope());
+            Optional<ExtractedFactEntity> fact = usableFactOfYear(facts, parsed.targetYear());
+            if (fact.isEmpty()) {
+                missing.add("%s%s '%s'에서 %d년 %s기준 %s%s 찾지 못했습니다".formatted(
+                        corpName, KoreanParticle.topic(corpName), document.getReportNm(),
+                        parsed.targetYear(), scopeText(parsed.scope()), parsed.itemLabel(),
+                        KoreanParticle.object(parsed.itemLabel())));
+                continue;
+            }
+            ExtractedFactEntity matched = fact.get();
+            values.put(corpName, new BigDecimal(matched.getNormalizedValue()));
+            summary.append(" → %s %s".formatted(
+                    corpName, KoreanAmountFormatter.format(matched.getNormalizedValue())));
+            addEvidence(evidences, document, matched);
+        }
+
+        if (!missing.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    evidences,
+                    summary + " → 수치를 못 찾은 기업이 있어 비교하지 않음",
+                    String.join(". ", missing) + ". 한쪽 수치만으로는 비교할 수 없습니다");
+        }
+
+        appendCorpGap(summary, values);
+        appendScopeNote(summary, parsed);
+        return AnswerHandlerResult.of(evidences, summary.toString());
+    }
+
+    /** {@code 삼성전자와 SK하이닉스}처럼 받침에 맞춰 잇는다. */
+    private static String joinCorpNames(List<String> corpNames) {
+        StringBuilder joined = new StringBuilder(corpNames.getFirst());
+        for (int index = 1; index < corpNames.size(); index++) {
+            joined.append(KoreanParticle.and(corpNames.get(index - 1)))
+                    .append(' ')
+                    .append(corpNames.get(index));
+        }
+        return joined.toString();
+    }
+
+    /** 가장 큰 기업과 차이를 남긴다. 답변 문장은 HCX가 쓰므로 계산 근거만 적는다. */
+    private static void appendCorpGap(StringBuilder summary, Map<String, BigDecimal> values) {
+        Map.Entry<String, BigDecimal> largest = null;
+        Map.Entry<String, BigDecimal> smallest = null;
+        for (Map.Entry<String, BigDecimal> entry : values.entrySet()) {
+            if (largest == null || entry.getValue().compareTo(largest.getValue()) > 0) {
+                largest = entry;
+            }
+            if (smallest == null || entry.getValue().compareTo(smallest.getValue()) < 0) {
+                smallest = entry;
+            }
+        }
+        if (largest == null || largest.getKey().equals(smallest.getKey())) {
+            summary.append(" → 값이 모두 같아 큰 쪽을 가리지 않음");
+            return;
+        }
+        BigDecimal gap = largest.getValue().subtract(smallest.getValue());
+        summary.append(" → %s가 %s보다 %s 큼(%s-%s)".formatted(
+                largest.getKey(), smallest.getKey(),
+                KoreanAmountFormatter.format(gap.toPlainString()),
+                largest.getValue().toPlainString(), smallest.getValue().toPlainString()));
     }
 
     private AnswerHandlerResult single(
@@ -182,9 +291,14 @@ public class FinancialAnswerHandler implements AnswerHandler {
     }
 
     private Optional<DisclosureDocumentEntity> selectDocument(FinancialQuestion parsed) {
+        return selectDocument(parsed, parsed.corpName());
+    }
+
+    private Optional<DisclosureDocumentEntity> selectDocument(
+            FinancialQuestion parsed, String corpName) {
         List<DisclosureDocumentEntity> documents =
                 documentRepository.findByCorpNameAndDocGroupAndBaseYearOrderByRceptDtDescRceptNoDesc(
-                        parsed.corpName(), DocGroup.PERIODIC, parsed.targetYear());
+                        corpName, DocGroup.PERIODIC, parsed.targetYear());
         if (documents.isEmpty()) {
             return Optional.empty();
         }

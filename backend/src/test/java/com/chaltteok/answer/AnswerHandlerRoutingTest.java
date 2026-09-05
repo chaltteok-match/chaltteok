@@ -172,6 +172,14 @@ class AnswerHandlerRoutingTest {
                 .isEqualTo("ExchangeAnswerHandler");
     }
 
+    @Test
+    void routesWholeCorpusRankingToFinancialSoItCanExplainWhy() {
+        // 기업 이름이 없어도 정기공시 항목을 묻는 질문이다. 아무도 안 나서면 왜 답할 수
+        // 없는지 대신 기본 문구가 나간다.
+        assertThat(routeOf("2024년 매출액이 가장 큰 기업은?"))
+                .isEqualTo("FinancialAnswerHandler");
+    }
+
     @ParameterizedTest
     @CsvSource(textBlock = """
             삼성전자 주가가 오를까?

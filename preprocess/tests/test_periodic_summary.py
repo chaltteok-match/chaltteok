@@ -490,11 +490,12 @@ def test_다른_단원을_가리키는_안내문을_소제목으로_보지_않�
     }
 
 
-def test_기준을_밝히지_않은_소제목은_앞_기준을_물려받지_않는다(tmp_path):
+def test_연결_소제목_뒤의_기준_없는_소제목은_별도로_읽는다(tmp_path):
     """카카오처럼 '가. 요약 연결 재무정보' 다음에 '나. 요약 재무정보'가 오는 문서가 있다.
 
-    두 번째 표는 별도인데 기준을 적지 않는다. 앞 소제목을 물려주면 별도 수치가
-    연결로 기록되어 3배 틀린 답이 나간다. 근거가 없으면 unknown으로 둔다.
+    DART 사업보고서가 쓰는 짝이다. 뒤쪽에 '별도'라는 말이 없을 뿐 별도 표다.
+    unknown으로 두면 별도 기준 질문에 답하지 못하고, 앞 기준을 물려주면 별도 수치가
+    연결로 기록되어 3배 틀린 답이 나간다.
     """
     body = (
         "<P>가. 요약 연결 재무정보</P>"
@@ -509,10 +510,41 @@ def test_기준을_밝히지_않은_소제목은_앞_기준을_물려받지_않�
     }
 
     assert scopes[(Scope.CONSOLIDATED, 2024)] == "7,871,692"
-    assert scopes[(Scope.UNKNOWN, 2024)] == "2,595,101"
-    assert (Scope.CONSOLIDATED, 2024) in scopes
+    assert scopes[(Scope.SEPARATE, 2024)] == "2,595,101"
     # 앞 기준이 물려졌다면 2,595,101도 연결로 기록되어 값이 덮였을 것이다
     assert scopes[(Scope.CONSOLIDATED, 2024)] != "2,595,101"
+
+
+def test_앞에_연결_소제목이_없으면_별도로_단정하지_않는다(tmp_path):
+    """연결을 만들지 않는 회사는 '요약재무정보' 하나만 싣는다. 그것까지 별도로 보지 않는다."""
+    body = (
+        "<P>가. 요약 재무정보</P>"
+        + summary_table(rows=(row_xml("매출액", "2,595,101", "2,499,600", "2,456,591"),))
+    )
+    result = parse(tmp_path, body)
+
+    assert [fact.scope for fact in facts_by_key(result, "revenue")] == [Scope.UNKNOWN] * 3
+
+
+def test_별도_소제목_뒤의_기준_없는_소제목은_그대로_둔다(tmp_path):
+    """짝이 아니라 표가 셋 이상인 문서다. 근거가 약해 추정하지 않는다."""
+    body = (
+        "<P>가. 요약 연결 재무정보</P>"
+        + summary_table(rows=(row_xml("매출액", "7,871,692", "7,557,002", "6,798,742"),))
+        + "<P>나. 요약 별도 재무정보</P>"
+        + summary_table(rows=(row_xml("매출액", "2,595,101", "2,499,600", "2,456,591"),))
+        + "<P>다. 요약 재무정보</P>"
+        + summary_table(rows=(row_xml("매출액", "1,111,111", "1,000,000", "900,000"),))
+    )
+    result = parse(tmp_path, body)
+    scopes = {
+        (fact.scope, fact.period_end.year): fact.raw_value
+        for fact in facts_by_key(result, "revenue")
+    }
+
+    assert scopes[(Scope.CONSOLIDATED, 2024)] == "7,871,692"
+    assert scopes[(Scope.SEPARATE, 2024)] == "2,595,101"
+    assert scopes[(Scope.UNKNOWN, 2024)] == "1,111,111"
 
 
 def test_소제목이_없으면_표_머리글의_기준_표기를_읽는다(tmp_path):

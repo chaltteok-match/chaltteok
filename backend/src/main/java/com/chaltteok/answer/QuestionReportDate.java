@@ -20,6 +20,7 @@ public final class QuestionReportDate {
             Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})"),
             Pattern.compile("(\\d{4})\\.(\\d{1,2})\\.(\\d{1,2})")
     );
+
     private static final Pattern DATE_HINT = Pattern.compile(
             "\\d{4}년\\s*\\d{1,2}월|\\d{4}[-.]\\d{1,2}"
     );

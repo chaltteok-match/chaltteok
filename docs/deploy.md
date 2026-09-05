@@ -110,6 +110,7 @@ cp .env.server.example .env.server
 ```bash
 # 로컬에서
 docker exec chaltteok-db pg_dump -U chaltteok -Fc chaltteok > chaltteok.dump
+#          └ 컨테이너 이름         └ 사용자      └ DB 이름
 scp chaltteok.dump 서버주소:~/
 
 # 서버에서 — DB만 먼저 띄우고 복원
@@ -128,6 +129,12 @@ docker compose -f docker-compose.server.yml --env-file .env.server up -d --build
 ```
 
 첫 빌드는 의존성을 모두 받느라 10분쯤 걸립니다. 두 번째부터는 짧습니다.
+
+**앞 단계를 건너뛰면 안 됩니다.**
+
+- `HCX_API_KEY`가 비어 있는데 `HCX_ENABLED=true`면 **앱이 아예 뜨지 않고 계속 재시작합니다**
+  (`HCX_ENABLED=true일 때 HCX_API_KEY가 필요합니다`)
+- 데이터를 복원하기 전에 앱을 올리면 표가 없어 **모든 질문이 503**입니다
 
 ## 6. 확인
 
@@ -154,7 +161,26 @@ docker compose -f docker-compose.server.yml --env-file .env.server restart app
 ```
 
 `restart: unless-stopped`라 컨테이너가 죽거나 장비가 재부팅돼도 알아서 다시 뜹니다.
-사람이 붙어 있지 않아도 되도록 건 설정입니다.
+
+### 멈추기만 한 앱도 되살린다
+
+`restart` 정책은 컨테이너가 **죽었을 때**만 걸립니다. 앱이 죽지 않고 응답만 못 하는 상태가 되면
+Docker Engine은 healthcheck 결과를 보고도 **아무것도 하지 않습니다**(그건 Swarm 기능입니다).
+평가는 4일 연속이고 그동안 사람이 붙어 있을 수 없어, `autoheal` 컨테이너가 30초마다 보고
+`unhealthy`면 직접 재시작합니다.
+
+`docker pause`로 멈춤을 재현해 확인한 결과입니다.
+
+```
+15초  status=paused   health=unhealthy
+30초  status=running  health=starting   ← autoheal이 재시작
+75초  healthy, /answer 200
+```
+
+autoheal은 `/var/run/docker.sock`을 마운트합니다. 이 소켓을 가진 컨테이너는 호스트에서
+root와 같은 힘을 갖습니다. 평가 전용 장비라 감수한 선택입니다.
+
+로그는 컨테이너당 10MB × 3개로 상한을 걸어 뒀습니다. 상한이 없으면 4일치가 디스크를 채웁니다.
 
 ## 자주 막히는 곳
 
@@ -164,3 +190,5 @@ docker compose -f docker-compose.server.yml --env-file .env.server restart app
 | 근거 있는 질문이 503 | `HCX_API_KEY` 또는 `HCX_ENABLED` |
 | 밖에서 접속 안 됨 | 방화벽 인바운드 80, 또는 `PUBLIC_PORT`가 80이 아닙니다 |
 | 재부팅 후 주소가 바뀜 | 외부 IP를 고정으로 예약하지 않았습니다 |
+| 앱이 안 뜨고 계속 재시작 | `HCX_ENABLED=true`인데 `HCX_API_KEY`가 비었습니다. `docker compose logs app`에 이유가 찍힙니다 |
+| **모든** 질문이 503 | 데이터를 복원하지 않았습니다. 표가 없어 조회가 실패합니다 |

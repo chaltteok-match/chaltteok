@@ -21,6 +21,12 @@ services:
     # 장비가 재부팅돼도 알아서 다시 뜬다. 평가 기간에 사람이 붙어 있을 수 없다.
     restart: unless-stopped
     mem_limit: ${DB_MEM_LIMIT:-512m}
+    logging: &logging
+      driver: json-file
+      options:
+        # 상한이 없으면 4일치 로그가 디스크를 채운다.
+        max-size: "10m"
+        max-file: "3"
 
   app:
     build:
@@ -50,6 +56,27 @@ services:
     # 제한을 걸지 않으면 JVM이 장비 전체 메모리 기준으로 힙을 잡는다. 2GB 장비에서
     # 힙 1.2GB를 잡으면 PostgreSQL과 OS가 쓸 자리가 남지 않는다.
     mem_limit: ${APP_MEM_LIMIT:-1g}
+    logging: *logging
+    labels:
+      # autoheal이 이 딱지가 붙은 컨테이너만 본다.
+      autoheal: "true"
+
+  # 앱이 죽지 않고 멈추기만 하면 restart 정책이 걸리지 않는다. Docker Engine은
+  # healthcheck 결과를 보고 아무것도 하지 않는다(그건 Swarm 기능이다).
+  # 평가는 4일 연속이고 그동안 사람이 붙어 있을 수 없어, unhealthy를 직접 되살린다.
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 30
+      AUTOHEAL_START_PERIOD: 120
+    volumes:
+      # 컨테이너를 재시작하려면 도커에 명령해야 한다. 이 소켓을 마운트한 컨테이너는
+      # 호스트에서 root와 같은 힘을 갖는다. 평가 전용 장비라 감수한다.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
 
 volumes:
   postgres-data:

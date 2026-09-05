@@ -18,6 +18,7 @@ _WHITESPACE = re.compile(r"\s+")
 _BARE_AMP = re.compile(r"&(?!#\d+;|#x[0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
 _BARE_LT = re.compile(r"<(?=[^A-Za-z/!?])")
 MISSING_RAW_VALUES = frozenset({"-"})
+_MISSING_TEXT = frozenset({"해당사항없음", "해당없음"})
 
 
 @dataclass(frozen=True)
@@ -154,7 +155,9 @@ def readable_label(value: str) -> str:
 
 def is_missing_value(raw_value: str) -> bool:
     stripped = raw_value.strip()
-    return not stripped or stripped in MISSING_RAW_VALUES
+    if not stripped or stripped in MISSING_RAW_VALUES:
+        return True
+    return stripped.replace(" ", "") in _MISSING_TEXT
 
 
 def normalize_number(raw_value: str) -> str:

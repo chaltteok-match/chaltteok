@@ -47,3 +47,18 @@
 
 질문은 `대량보유`, `지분공시`, `보유상황`처럼 서식을 가리키는 표현이 있어야 이 Handler가 받는다.
 `지분율`만 있는 정기공시 질문은 받지 않는다. 기업명은 다른 공시 유형과 같이 약칭·음차·종목코드도 받는다.
+
+## 전처리와 적재
+
+파서는 문서마다 `relations`를 비운다. 신규·변경 사슬은 JSONL이 아니라 Handler가 잇는다.
+그래서 적재 줄 순서 때문에 원본이 없다고 실패하지는 않는다.
+
+```bash
+cd preprocess
+python -m chaltteok_etl --corpus ../corpus --out ../corpus/preprocessed_holding.jsonl --doc-group holding
+cd ../backend
+./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/corpus/preprocessed_holding.jsonl'
+```
+
+산출물 JSONL은 Git에 올리지 않는다. 명령과 HOLDING만 지우는 SQL은 `backend/README.md`에 있다.
+코퍼스 대량보유는 70개사 1,083건이다. 로컬에서 실패 없이 전처리·적재하면 문서 1,083건이 된다.

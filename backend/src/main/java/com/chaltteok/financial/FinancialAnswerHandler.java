@@ -59,7 +59,12 @@ public class FinancialAnswerHandler implements AnswerHandler {
     @Transactional(readOnly = true)
     public boolean supports(String question) {
         FinancialQuestion parsed = parse(question);
-        return parsed.corpName() != null && parsed.factKey() != null;
+        if (parsed.factKey() == null) {
+            return false;
+        }
+        // 기업 이름이 없어도 `매출액이 가장 큰 기업은?`은 정기공시 항목을 묻는 질문이다.
+        // 나서지 않으면 왜 답할 수 없는지 대신 기본 문구가 나간다.
+        return parsed.corpName() != null || parsed.wantsCorpRanking();
     }
 
     @Override

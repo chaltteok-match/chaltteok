@@ -161,6 +161,8 @@ class FinancialAnswerHandlerIT {
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("기업 전체를 견주어 순위를 답할 수 없습니다");
         assertThat(result.evidences()).isEmpty();
+        // 기업 이름이 없어도 이 Handler가 맡아야 위 사유가 사용자에게 나간다.
+        assertThat(handler.supports("2024년 매출액이 가장 큰 기업은?")).isTrue();
     }
 
     @Test

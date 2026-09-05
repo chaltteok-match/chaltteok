@@ -73,6 +73,27 @@ class ExchangeQuestionParserTest {
     }
 
     @Test
+    void readsInvestmentJudgementWithoutAnItem() {
+        ExchangeQuestion parsed =
+                parse("삼성전자가 2025년 9월 10일 공시한 투자판단관련주요경영사항의 내용은?");
+
+        assertThat(parsed.topic()).isEqualTo(ExchangeTopic.INVESTMENT_JUDGEMENT);
+        // 자유 서술이라 뽑아 둔 값이 없다. 항목을 고르지 않고 원문을 그대로 낸다.
+        assertThat(parsed.factKey()).isNull();
+        assertThat(parsed.itemLabel()).isEqualTo("공시 내용");
+        assertThat(parsed.isIdentified()).isTrue();
+    }
+
+    @Test
+    void investmentJudgementIsNotReadAsFacilityInvestment() {
+        // '투자판단'이 '투자금액'보다 먼저 걸려야 신규시설투자로 새지 않는다.
+        assertThat(parse("HMM의 투자판단관련주요경영사항 투자금액은?").topic())
+                .isEqualTo(ExchangeTopic.INVESTMENT_JUDGEMENT);
+        assertThat(parse("HMM의 신규시설투자 투자금액은?").topic())
+                .isEqualTo(ExchangeTopic.FACILITY_INVESTMENT);
+    }
+
+    @Test
     void leavesTopicNullWhenQuestionIsNotAboutExchangeDisclosure() {
         ExchangeQuestion parsed = parse("삼성전자의 2024년 연결기준 매출액은 얼마인가?");
 

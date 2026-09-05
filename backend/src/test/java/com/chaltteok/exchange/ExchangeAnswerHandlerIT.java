@@ -114,6 +114,26 @@ class ExchangeAnswerHandlerIT {
 
         // HMM 20230214 — 신규시설투자등.
         persistenceService.save(hmmInvestment());
+
+        // 셀트리온 투자판단관련주요경영사항. 사실이 없고 원문 chunk만 있다.
+        persistenceService.save(judgement("20260330800100", LocalDate.of(2026, 3, 30),
+                "투자판단관련주요경영사항 (CTP51(키트루다 바이오시밀러) 한국 임상 3상 시험계획 변경신청)",
+                "CT-P51(키트루다 바이오시밀러) 한국 임상 3상 시험계획 변경신청",
+                "※ 투자유의사항 임상시험 약물이 의약품으로 최종 허가받을 확률은 약 10% 수준입니다."));
+        // 같은 날 서로 다른 사건 2건. 날짜로 좁혀도 갈린다.
+        persistenceService.save(judgement("20250224800100", LocalDate.of(2025, 2, 24),
+                "투자판단관련주요경영사항 (CTP13 SC 한국 임상 3상)",
+                "CT-P13 SC(램시마 피하주사 제형) 한국 임상 3상",
+                "임상시험 대상자 수를 변경합니다."));
+        persistenceService.save(judgement("20250224800200", LocalDate.of(2025, 2, 24),
+                "투자판단관련주요경영사항 (앱토즈마 유럽연합 허가)",
+                "앱토즈마(CTP47, 로악템라 바이오시밀러) 유럽연합 허가",
+                "유럽연합 집행위원회로부터 품목허가를 받았습니다."));
+        // 금액 문자열에 단서가 붙은 공시. 숫자만 떼면 틀린 값이 된다.
+        persistenceService.save(judgement("20250910800100", LocalDate.of(2025, 9, 10),
+                "투자판단관련주요경영사항 (미국 생산시설 투자)",
+                "미국 생산시설 투자 계획",
+                "총 투자 규모는 5.9조원(보조금 0.7조원 포함)입니다."));
     }
 
     private AnswerHandlerResult answer(String question) {
@@ -315,6 +335,70 @@ class ExchangeAnswerHandlerIT {
     }
 
     @Test
+    void answersInvestmentJudgementWithRawChunks() {
+        AnswerHandlerResult result =
+                answer("셀트리온이 2026년 3월 30일 공시한 투자판단관련주요경영사항의 내용은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        // 원문 세 항목을 그대로 낸다.
+        assertThat(result.evidences()).hasSize(3);
+        assertThat(result.evidences()).allMatch(evidence ->
+                evidence.reportDate().equals(LocalDate.of(2026, 3, 30)));
+        assertThat(result.evidences().get(0).evidenceText()).contains("CT-P51");
+        assertThat(result.processSummary())
+                .contains("셀트리온·투자판단관련주요경영사항 식별")
+                .contains("CT-P51(키트루다 바이오시밀러) 한국 임상 3상 시험계획 변경신청");
+    }
+
+    @Test
+    void refusesWhenSeveralJudgementsWereFiledOnTheSameDay() {
+        AnswerHandlerResult result =
+                answer("셀트리온이 2025년 2월 24일 공시한 투자판단관련주요경영사항의 내용은?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason())
+                .contains("셀트리온이")
+                .contains("2025-02-24")
+                .contains("2건");
+        // 되물을 수 있게 후보의 제목만 근거로 남긴다.
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.evidences()).allMatch(evidence ->
+                evidence.evidenceText().startsWith("1. 제목"));
+    }
+
+    @Test
+    void answersWithTheLatestJudgementWhenNoDateIsGiven() {
+        AnswerHandlerResult result = answer("셀트리온의 투자판단관련주요경영사항 공시 내용은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("최신 공시 사용")
+                .contains("2026-03-30");
+    }
+
+    @Test
+    void doesNotPullNumbersOutOfJudgementText() {
+        // 5.9조원은 보조금 0.7조원을 포함한 값이다. 숫자만 떼어 계산하면 틀린 값이 된다.
+        AnswerHandlerResult result =
+                answer("셀트리온이 2025년 9월 10일 공시한 투자판단관련주요경영사항의 내용은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).anyMatch(evidence ->
+                evidence.evidenceText().contains("5.9조원(보조금 0.7조원 포함)"));
+        // 값을 고르지 않으므로 처리 요약에 계산된 금액이 없다.
+        assertThat(result.processSummary()).doesNotContain("5조 9,000억원");
+    }
+
+    @Test
+    void judgementQuestionsDoNotReachOtherExchangeForms() {
+        // '투자판단'이 '투자금액'보다 먼저 걸려야 신규시설투자로 새지 않는다.
+        AnswerHandlerResult result = answer("HMM의 투자판단관련주요경영사항 투자금액은?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("투자판단관련주요경영사항");
+    }
+
+    @Test
     void declinesQuestionsAboutOtherDisclosureTypes() {
         assertThat(handler.supports("삼성전자의 2024년 연결기준 매출액은 얼마인가?")).isFalse();
         assertThat(handler.supports("삼성전자가 2025년 7월 28일 공시한 공급계약금액은?")).isTrue();
@@ -407,6 +491,19 @@ class ExchangeAnswerHandlerIT {
         return fixture.build();
     }
 
+    /** 투자판단관련주요경영사항. 전처리가 사실을 뽑지 않아 chunk만 남는다. */
+    private static PreprocessResult judgement(
+            String rceptNo, LocalDate rceptDt, String reportNm, String title, String body) {
+        String docId = "exchange_" + rceptNo;
+        Fixture fixture = new Fixture(docId);
+        fixture.document = document(docId, "셀트리온", "00421045", "068270",
+                reportNm, rceptNo, rceptDt, false);
+        fixture.chunkOnly("1. 제목", title);
+        fixture.chunkOnly("2. 주요내용", body);
+        fixture.chunkOnly("3. 이사회결의일(결정일) 또는 사실확인일", rceptDt.toString());
+        return fixture.build();
+    }
+
     private static DisclosureDocument document(
             String docId, String corpName, String corpCode, String stockCode,
             String reportNm, String rceptNo, LocalDate rceptDt, boolean correction) {
@@ -453,6 +550,16 @@ class ExchangeAnswerHandlerIT {
                     null, null, asOfDate,
                     // 거래소공시는 사건 공시다. 값은 접수 시점의 상태를 가리킨다.
                     PeriodBasis.POINT_IN_TIME, Scope.NOT_APPLICABLE, ExtractionStatus.OK));
+        }
+
+        /** 사실 없이 원문만 있는 행. 투자판단관련주요경영사항이 그렇다. */
+        private void chunkOnly(String label, String value) {
+            int sequence = chunks.size();
+            chunks.add(new EvidenceChunk(
+                    "%s:chunk:%04d".formatted(docId, sequence), docId, sequence,
+                    ContentType.TABLE, "%s | %s".formatted(label, value),
+                    "raw/exchange/sample/" + docId + ".xml", SourceFormat.HTML,
+                    null, null, null, label, null));
         }
 
         private PreprocessResult build() {

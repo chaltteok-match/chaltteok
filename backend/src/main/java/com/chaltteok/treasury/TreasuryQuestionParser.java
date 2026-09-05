@@ -37,12 +37,18 @@ final class TreasuryQuestionParser {
     static TreasuryQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
         String corpName = corpNames.resolve(text);
+        String compactQuestion = compact(text);
         String item = ITEM_KEYWORDS.keySet().stream()
-                .filter(text::contains)
+                .filter(keyword -> compactQuestion.contains(compact(keyword)))
                 .findFirst()
                 .orElse(null);
         String factKey = item == null ? null : ITEM_KEYWORDS.get(item);
         String itemLabel = item == null ? "자기주식 취득예정" : item;
         return new TreasuryQuestion(corpName, factKey, itemLabel);
+    }
+
+    /** 평가 질의의 띄어쓰기 차이를 무시한다. {@code 취득 예정 금액}과 {@code 취득예정금액}을 같게 본다. */
+    private static String compact(String value) {
+        return value.replaceAll("\\s+", "");
     }
 }

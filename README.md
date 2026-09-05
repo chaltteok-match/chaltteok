@@ -4,17 +4,6 @@
 
 제공된 공시 데이터에서 질문과 관련된 문서를 찾고, 정보를 추출·비교·계산하거나 정정·후속 공시를 추적한 뒤 HyperCLOVA X를 통해 근거와 정보 한계를 포함한 답변을 제공합니다.
 
-## 평가용 API Endpoint
-
-| 항목 | 값 |
-| --- | --- |
-| Endpoint URL | `http://49.50.143.91/answer` |
-| 경로 | `GET /answer?question_id={id}&question={질문}` |
-| 응답 | `application/json`, 5개 필드 모두 문자열 |
-| 인증 | 없음 |
-
-실행 방법과 필요한 환경변수는 [`backend/README.md`](backend/README.md#평가-서버로-띄우기)에 있습니다.
-
 ## MVP 목표
 
 다음 네 가지 평가 유형을 하나의 `/answer` API로 처리합니다.

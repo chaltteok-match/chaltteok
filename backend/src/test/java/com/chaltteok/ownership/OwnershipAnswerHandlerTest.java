@@ -298,6 +298,47 @@ class OwnershipAnswerHandlerTest {
     }
 
     @Test
+    void doesNotAnswerReportReasonWithPurposeFact() {
+        DisclosureDocumentEntity document = document("holding_20250115000001", false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("삼성전자"), eq(DocGroup.HOLDING), eq("대량보유상황보고서"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(List.of(
+                        fact(document, "ownership_holder", "대표보고자", "국민연금공단", null, null),
+                        fact(document, "ownership_purpose", "보유목적", "단순투자", null, null)
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 보고사유는?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("보고사유");
+        assertThat(result.processSummary()).doesNotContain("ownership_purpose");
+        assertThat(result.evidences()).isEmpty();
+    }
+
+    @Test
+    void answersReportTypeOnASingleFilingDate() {
+        DisclosureDocumentEntity document = document("holding_20250115000001", false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("삼성전자"), eq(DocGroup.HOLDING), eq("대량보유상황보고서"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(holdingFacts(document, "국민연금공단", "변경", "50000000", "8.25", "단순투자"));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 보고구분은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("변경");
+        assertThat(result.evidences().getFirst().evidenceText()).doesNotContain("단순투자");
+    }
+
+    @Test
     void purposeHistoryKeepsPurposeChangeWhenQuantityDidNotChange() {
         DisclosureDocumentEntity original = document("holding_20241201000001", LocalDate.of(2024, 12, 1), false);
         DisclosureDocumentEntity changed = document("holding_20250115000001", REPORT_DATE, false);

@@ -1,0 +1,7 @@
+# 전처리 실행에 필요한 패키지. pyproject.toml의 dependencies와 같은 값입니다.
+#   python -m pip install -r requirements.txt
+#   python -m pip install -e .        # chaltteok_etl 패키지 자체를 설치
+pydantic==2.13.4
+
+# 테스트까지 돌릴 때만 필요합니다(pyproject.toml의 optional-dependencies.dev).
+# pytest==9.1.1

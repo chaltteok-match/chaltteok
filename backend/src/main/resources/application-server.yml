@@ -1,0 +1,28 @@
+# 평가 서버용 프로필. 접속 정보를 환경변수로 받는다.
+#
+# 비밀은 이 파일에 두지 않는다. 저장소를 clone한 곳에서 환경변수만 채우면 뜬다.
+# `local` 프로필은 커밋하지 않는 application-local.yml에 값이 있어 서버에서는 쓸 수 없다.
+#
+# 사용법과 환경변수 목록은 backend/README.md 참고.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      # 평가는 5분 타임아웃으로 연달아 호출한다. 커넥션이 모자라면 큐에서 기다리다 함께 늦어진다.
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    hibernate:
+      # 스키마는 적재할 때 이미 만들어져 있다. 평가 중에는 건드리지 않는다.
+      ddl-auto: none
+
+server:
+  port: ${SERVER_PORT:8080}
+  # 평가 서버가 300초까지 기다린다. HCX 응답이 느려도 우리가 먼저 끊지 않는다.
+  tomcat:
+    connection-timeout: ${SERVER_CONNECTION_TIMEOUT:300s}
+
+logging:
+  level:
+    com.chaltteok: ${LOG_LEVEL:INFO}

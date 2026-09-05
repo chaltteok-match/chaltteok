@@ -1,0 +1,55 @@
+# 평가 서버용. PostgreSQL과 애플리케이션을 함께 띄운다.
+#
+#   cp .env.server.example .env.server   # 값을 채운다
+#   docker compose -f docker-compose.server.yml --env-file .env.server up -d
+#
+# 로컬 개발은 docker-compose.yml(DB만)을 그대로 쓴다.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # 장비가 재부팅돼도 알아서 다시 뜬다. 평가 기간에 사람이 붙어 있을 수 없다.
+    restart: unless-stopped
+    mem_limit: ${DB_MEM_LIMIT:-512m}
+
+  app:
+    build:
+      context: ../backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: server
+      # 컨테이너끼리는 서비스 이름으로 부른다. 호스트 포트를 열 필요가 없다.
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      HCX_ENABLED: ${HCX_ENABLED:-true}
+      HCX_API_KEY: ${HCX_API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # 왼쪽이 공개 포트. 평가 규격이 80이고, 컨테이너 안에서는 8080으로 뜬다.
+    ports:
+      - "${PUBLIC_PORT:-80}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    # 제한을 걸지 않으면 JVM이 장비 전체 메모리 기준으로 힙을 잡는다. 2GB 장비에서
+    # 힙 1.2GB를 잡으면 PostgreSQL과 OS가 쓸 자리가 남지 않는다.
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+
+volumes:
+  postgres-data:

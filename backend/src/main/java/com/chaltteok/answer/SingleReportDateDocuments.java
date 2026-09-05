@@ -10,11 +10,26 @@ import java.util.Map;
 /**
  * 날짜 없는 단건 조회에서 「공시일이 하루로 모이는지」를 본다.
  *
- * <p>같은 날 원본·정정은 정정본만 남긴다. 날이 둘 이상이면 고르지 않는다.
+ * <p>연도가 있으면 그 해 접수일만 남긴 뒤 본다. 같은 날 원본·정정은 정정본만 남긴다.
+ * 날이 둘 이상이면 고르지 않는다.
  */
 public final class SingleReportDateDocuments {
 
     private SingleReportDateDocuments() {
+    }
+
+    /** 연도가 있으면 그 해 접수일만 남긴다. 연도가 없으면 받은 목록을 그대로 둔다. */
+    public static List<DisclosureDocumentEntity> inYear(
+            List<DisclosureDocumentEntity> documents,
+            Integer year
+    ) {
+        if (year == null) {
+            return List.copyOf(documents);
+        }
+        return documents.stream()
+                .filter(document -> document.getRceptDt() != null
+                        && document.getRceptDt().getYear() == year)
+                .toList();
     }
 
     public static List<DisclosureDocumentEntity> uniqueDay(List<DisclosureDocumentEntity> documents) {

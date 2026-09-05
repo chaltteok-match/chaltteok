@@ -30,6 +30,8 @@ import org.springframework.stereotype.Component;
  * <p>대표 질문: 삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 지분율은 얼마인가?
  *
  * <p>공시일(한글·ISO·점 표기)만 있으면 그날 문서를 특정하고, 같은 날 정정본이 있으면 정정본만 남긴다.
+ * 연도만 있으면 그 해로 좁히고, 그 해 공시가 없으면 답변 불가다.
+ * 공시일·연도가 없고 날이 하나면 그 공시를 고른다.
  * {@code 어떻게 바뀌었나}처럼 과정을 물으면 같은 보고자의 신규·변동·변경을 시간순으로 잇는다.
  * 보유목적을 물으면 목적 문장이 바뀐 단계를 남긴다.
  */
@@ -109,20 +111,30 @@ public class OwnershipAnswerHandler implements AnswerHandler {
                     "질문에서 공시일을 읽지 못해 대량보유 공시를 특정하지 못했습니다"
             );
         } else {
-            searchSummary += ", 공시일 없이 단건 검색";
             List<DisclosureDocumentEntity> all =
                     documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                             parsed.corpName(), DocGroup.HOLDING, DOC_SUBTYPE);
             if (all.isEmpty()) {
                 return AnswerHandlerResult.unavailable(
-                        searchSummary,
+                        searchSummary + " 검색",
                         "해당 기업의 대량보유 공시를 찾지 못했습니다"
                 );
             }
-            documents = SingleReportDateDocuments.uniqueDay(all);
+            Integer year = QuestionReportDate.parseYear(question);
+            searchSummary += year == null
+                    ? ", 공시일 없이 단건 검색"
+                    : ", 연도=" + year + " 단건 검색";
+            List<DisclosureDocumentEntity> scoped = SingleReportDateDocuments.inYear(all, year);
+            if (scoped.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary,
+                        "해당 기업의 " + year + "년 대량보유 공시를 찾지 못했습니다"
+                );
+            }
+            documents = SingleReportDateDocuments.uniqueDay(scoped);
             if (documents.isEmpty()) {
                 return AnswerHandlerResult.unavailable(
-                        searchSummary + " → 공시일 " + all.size() + "건",
+                        searchSummary + " → 공시일 " + scoped.size() + "건",
                         "여러 차례 대량보유 공시가 있어 공시일을 특정하지 못했습니다"
                 );
             }

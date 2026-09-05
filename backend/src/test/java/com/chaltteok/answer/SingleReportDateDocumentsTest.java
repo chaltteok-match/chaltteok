@@ -29,6 +29,19 @@ class SingleReportDateDocumentsTest {
         assertThat(SingleReportDateDocuments.uniqueDay(List.of(first, second))).isEmpty();
     }
 
+    @Test
+    void keepsOnlyDocumentsInTheAskedYear() {
+        DisclosureDocumentEntity in2024 = document("a", LocalDate.of(2024, 9, 30), false);
+        DisclosureDocumentEntity in2025 = document("b", LocalDate.of(2025, 8, 14), false);
+
+        assertThat(SingleReportDateDocuments.inYear(List.of(in2024, in2025), 2024))
+                .containsExactly(in2024);
+        assertThat(SingleReportDateDocuments.inYear(List.of(in2024, in2025), 2099))
+                .isEmpty();
+        assertThat(SingleReportDateDocuments.inYear(List.of(in2024, in2025), null))
+                .containsExactly(in2024, in2025);
+    }
+
     private static DisclosureDocumentEntity document(String docId, LocalDate date, boolean correction) {
         DisclosureDocumentEntity entity = new DisclosureDocumentEntity();
         entity.setDocId(docId);

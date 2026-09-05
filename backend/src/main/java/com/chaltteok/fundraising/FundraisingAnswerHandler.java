@@ -39,7 +39,8 @@ import org.springframework.stereotype.Component;
  * 신주수×발행가액과 다를 수 있어 총 조달금액이라고 단정하지 않는다.
  *
  * <p>질문의 공시일(한글·ISO·점 표기)로 {@code rcept_dt}를 좁힌다.
- * 공시일이 없고 그 기업·서식의 날이 하나면 그 공시를 고른다.
+ * 연도만 있으면 그 해로 좁히고, 그 해 공시가 없으면 답변 불가다.
+ * 공시일·연도가 없고 그 기업·서식의 날이 하나면 그 공시를 고른다.
  * 같은 날짜에 정정본이 있으면 원본은 대체된 것으로 보고 정정본만 남긴다.
  * 남은 문서끼리 금액이 서로 다르면 답변 불가로 둔다.
  *
@@ -151,20 +152,30 @@ public class FundraisingAnswerHandler implements AnswerHandler {
                     "질문에서 공시일을 읽지 못해 유상증자 공시를 특정하지 못했습니다"
             );
         } else {
-            searchSummary += ", 공시일 없이 단건 검색";
             List<DisclosureDocumentEntity> all =
                     documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                             parsed.corpName(), DocGroup.MAJOR, DOC_SUBTYPE);
             if (all.isEmpty()) {
                 return AnswerHandlerResult.unavailable(
-                        searchSummary,
+                        searchSummary + " 검색",
                         "해당 기업의 유상증자 공시를 찾지 못했습니다"
                 );
             }
-            documents = SingleReportDateDocuments.uniqueDay(all);
+            Integer year = QuestionReportDate.parseYear(question);
+            searchSummary += year == null
+                    ? ", 공시일 없이 단건 검색"
+                    : ", 연도=" + year + " 단건 검색";
+            List<DisclosureDocumentEntity> scoped = SingleReportDateDocuments.inYear(all, year);
+            if (scoped.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary,
+                        "해당 기업의 " + year + "년 유상증자 공시를 찾지 못했습니다"
+                );
+            }
+            documents = SingleReportDateDocuments.uniqueDay(scoped);
             if (documents.isEmpty()) {
                 return AnswerHandlerResult.unavailable(
-                        searchSummary + " → 공시일 " + all.size() + "건",
+                        searchSummary + " → 공시일 " + scoped.size() + "건",
                         "여러 차례 유상증자가 있어 공시일을 특정하지 못했습니다"
                 );
             }

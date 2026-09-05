@@ -263,6 +263,61 @@ class FundraisingAnswerHandlerTest {
     }
 
     @Test
+    void answersYearOnlyWhenThatYearHasASingleFiling() {
+        DisclosureDocumentEntity older = hanwhaFundraisingDocument(
+                "major_20240103000001",
+                "20240103000001",
+                LocalDate.of(2024, 1, 3),
+                false
+        );
+        DisclosureDocumentEntity matching = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(older, matching));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(parValueFact(matching), amountFact(matching, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스의 2025년 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("연도=2025")
+                .contains("major_20250408000012")
+                .doesNotContain("major_20240103000001");
+        assertThat(result.evidences().getFirst().reportDate()).isEqualTo(REPORT_DATE);
+        verify(factRepository, never()).findByDocumentDocId("major_20240103000001");
+    }
+
+    @Test
+    void returnsUnavailableWhenAskedYearHasNoFiling() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(document));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스의 2099년 유상증자 발행가는?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("2099년");
+        assertThat(result.evidences()).isEmpty();
+        verify(factRepository, never()).findByDocumentDocId(anyString());
+    }
+
+    @Test
     void returnsUnavailableWhenSearchFindsNoDocument() {
         when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 "한화에어로스페이스",

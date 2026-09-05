@@ -79,4 +79,37 @@ class FundraisingLocalDbIssuanceTest {
                 pairs.size(), answerable, unavailable);
         assertThat(answerable).isGreaterThan(0);
     }
+
+    @Test
+    void doesNotAnswerMissingYearAsAnotherFiling() {
+        List<String> corps = entityManager.createQuery(
+                        """
+                        select distinct d.corpName from DisclosureDocumentEntity d
+                        where d.docGroup = :docGroup and d.docSubtype = :subtype
+                        order by d.corpName
+                        """,
+                        String.class)
+                .setParameter("docGroup", DocGroup.MAJOR)
+                .setParameter("subtype", FundraisingAnswerHandler.DOC_SUBTYPE)
+                .getResultList();
+        assertThat(corps).isNotEmpty();
+
+        int withoutDate = 0;
+        int missingYear = 0;
+        for (String corp : corps) {
+            if (handler.handle("Q-LOCAL-NODATE", corp + "의 유상증자 발행가는?").isAnswerable()) {
+                withoutDate++;
+                System.out.println("  날짜 없이 답: " + corp);
+            }
+            AnswerHandlerResult missing = handler.handle(
+                    "Q-LOCAL-2099", corp + "의 2099년 유상증자 발행가는?");
+            if (missing.isAnswerable()) {
+                missingYear++;
+            }
+        }
+        System.out.printf(
+                "유상증자 기업 %d: 날짜 없이 답 %d, 2099년으로 답 %d%n",
+                corps.size(), withoutDate, missingYear);
+        assertThat(missingYear).isZero();
+    }
 }

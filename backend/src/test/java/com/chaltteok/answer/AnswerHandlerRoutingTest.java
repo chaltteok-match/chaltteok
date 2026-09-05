@@ -8,6 +8,7 @@ import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureRelationRepository;
+import com.chaltteok.disclosure.persistence.repository.EvidenceChunkRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
 import com.chaltteok.exchange.ExchangeAnswerHandler;
 import com.chaltteok.financial.FinancialAnswerHandler;
@@ -64,6 +65,9 @@ class AnswerHandlerRoutingTest {
     @Mock
     private CorpIdentityRepository corpIdentityRepository;
 
+    @Mock
+    private EvidenceChunkRepository chunkRepository;
+
     private AnswerHandlerSelector selector;
 
     @BeforeEach
@@ -96,7 +100,7 @@ class AnswerHandlerRoutingTest {
                 new OwnershipAnswerHandler(
                         documentRepository, factRepository, corpIdentityRepository),
                 new ExchangeAnswerHandler(documentRepository, factRepository,
-                        relationRepository, corpIdentityRepository),
+                        relationRepository, corpIdentityRepository, chunkRepository),
                 new TreasuryStockAnswerHandler(
                         documentRepository, factRepository, corpIdentityRepository),
                 new BondIssuanceAnswerHandler(

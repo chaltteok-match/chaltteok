@@ -42,6 +42,10 @@ final class ExchangeQuestionParser {
     private static final Map<String, ExchangeTopic> TOPIC_KEYWORDS = new LinkedHashMap<>();
 
     static {
+        // 서식 이름을 그대로 부른 질문이 먼저다. `투자판단`은 `투자금액`보다 앞이어야
+        // 「투자판단 공시의 투자금액」이 신규시설투자로 새지 않는다.
+        TOPIC_KEYWORDS.put("투자판단", ExchangeTopic.INVESTMENT_JUDGEMENT);
+        TOPIC_KEYWORDS.put("주요경영사항", ExchangeTopic.INVESTMENT_JUDGEMENT);
         TOPIC_KEYWORDS.put("공급계약해지", ExchangeTopic.SUPPLY_TERMINATION);
         TOPIC_KEYWORDS.put("계약해지", ExchangeTopic.SUPPLY_TERMINATION);
         TOPIC_KEYWORDS.put("해지금액", ExchangeTopic.SUPPLY_TERMINATION);
@@ -109,7 +113,7 @@ final class ExchangeQuestionParser {
         String text = question == null ? "" : question;
 
         ExchangeTopic topic = resolveTopic(text);
-        String factKey = topic == null ? null : resolveFactKey(text, topic);
+        String factKey = topic == null || !topic.hasFacts() ? null : resolveFactKey(text, topic);
 
         return new ExchangeQuestion(
                 corpNames.resolve(text),
@@ -117,9 +121,19 @@ final class ExchangeQuestionParser {
                 year(text),
                 topic,
                 factKey,
-                factKey == null ? null : ITEM_LABELS.get(factKey),
+                itemLabelOf(topic, factKey),
                 LARGEST.matcher(text).find(),
                 HISTORY.matcher(text).find());
+    }
+
+    /**
+     * 근거에 무엇을 찾았다고 쓸지. 사실이 없는 갈래는 원문을 그대로 내므로 항목이 없다.
+     */
+    private static String itemLabelOf(ExchangeTopic topic, String factKey) {
+        if (topic != null && !topic.hasFacts()) {
+            return "공시 내용";
+        }
+        return factKey == null ? null : ITEM_LABELS.get(factKey);
     }
 
     /** 등록된 순서대로 본다. 긴 표현을 앞에 둬 '계약해지'가 '계약금액'보다 먼저 걸린다. */

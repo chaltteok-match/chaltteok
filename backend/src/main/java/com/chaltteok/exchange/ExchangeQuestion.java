@@ -25,7 +25,11 @@ record ExchangeQuestion(
         boolean history
 ) {
     boolean isIdentified() {
-        return corpName != null && topic != null && factKey != null;
+        if (corpName == null || topic == null) {
+            return false;
+        }
+        // 투자판단은 사실이 없어 항목을 고르지 않는다. 원문 chunk를 그대로 낸다.
+        return factKey != null || !topic.hasFacts();
     }
 
     /** 문서를 한 건으로 좁힐 근거가 있는지. 최댓값 질문은 좁히지 않고 훑는다. */

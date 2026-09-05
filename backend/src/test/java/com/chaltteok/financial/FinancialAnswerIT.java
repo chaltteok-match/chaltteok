@@ -162,6 +162,24 @@ class FinancialAnswerIT {
     }
 
     @Test
+    void answersAYearThatOnlyAppearsInsideAnotherYearsReport() throws Exception {
+        // 요약재무정보 표는 세 기간을 담는다. 2023년 사업보고서에 2021년 값이 함께 있다.
+        // 기준연도가 2021년인 보고서는 코퍼스에 없다(접수가 2023-01-01부터다).
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 2021년 연결기준 매출액은 279조 6,047억원입니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-OLD")
+                        .param("question", "삼성전자의 2021년 연결기준 매출액은 얼마인가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("279,604,799")))
+                // 어느 보고서에서 나온 값인지 드러나야 한다.
+                .andExpect(jsonPath("$.think_trace").value(containsString("사업보고서 (2023.12)")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("2021년")));
+    }
+
+    @Test
     void returnsUnavailableAnswerWithNormalSchemaForMissingYear() throws Exception {
         mockMvc.perform(get("/answer")
                         .param("question_id", "Q-PERIODIC-003")

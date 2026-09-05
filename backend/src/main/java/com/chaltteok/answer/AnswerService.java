@@ -5,6 +5,7 @@ import com.chaltteok.hcx.HcxClient;
 import com.chaltteok.hcx.HcxClientException;
 import com.chaltteok.hcx.HcxPrompt;
 import com.chaltteok.hcx.HcxResult;
+import java.util.Optional;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
@@ -39,6 +40,13 @@ public class AnswerService {
         try {
             if (!handlerSelector.hasRegisteredHandlers()) {
                 return unavailable(questionId, question, "", NO_HANDLER_TRACE);
+            }
+
+            // 공시로 답할 수 없는 질문은 Handler에 넘기지 않는다. 기업명과 항목이 들어 있으면
+            // Handler가 나서서 근거를 찾고, 앞날을 묻는 질문에 과거 수치가 답으로 나간다.
+            Optional<QuestionScope.OutOfScope> outOfScope = QuestionScope.check(question);
+            if (outOfScope.isPresent()) {
+                return outOfScope(questionId, question, outOfScope.get());
             }
 
             return handlerSelector.select(question)
@@ -93,6 +101,17 @@ public class AnswerService {
             return handlerResult.processSummary() + " → " + handlerResult.unavailableReason();
         }
         return handlerResult.processSummary();
+    }
+
+    /** 답할 수 없는 이유가 분명한 질문. 무엇이 없어서인지 답변에도 남긴다. */
+    private static AnswerResult outOfScope(
+            String questionId, String question, QuestionScope.OutOfScope reason) {
+        return new AnswerResult(
+                questionId,
+                question,
+                "",
+                reason.thinkTrace(),
+                ANSWER_UNAVAILABLE + " " + reason.answerNote());
     }
 
     private static AnswerResult unavailable(

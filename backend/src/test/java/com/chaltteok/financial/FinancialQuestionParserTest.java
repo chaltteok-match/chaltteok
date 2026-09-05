@@ -161,4 +161,17 @@ class FinancialQuestionParserTest {
         assertThat(parse("삼성전자 2024년 매출액을 전년과 비교하면?").lostCounterpart()).isFalse();
         assertThat(parse("삼성전자 매출액을 2023년과 비교하면?").lostCounterpart()).isFalse();
     }
+
+    @Test
+    void doesNotMistakeScopeOrItemPairsForALostCounterpart() {
+        // `와`·`과` 양옆이 기업이 아니라 우리가 아는 낱말이면 상대 기업을 잃은 것이 아니다.
+        assertThat(parse("삼성전자 2024년 연결과 별도 매출액 차이는 얼마나 되나?")
+                .lostCounterpart()).isFalse();
+        assertThat(parse("삼성전자의 2024년 매출액을 연결기준과 별도기준으로 비교하면?")
+                .lostCounterpart()).isFalse();
+        assertThat(parse("삼성전자의 매출액과 영업이익을 비교하면?").lostCounterpart()).isFalse();
+        assertThat(parse("삼성전자 매출액과 영업이익은 2023년 대비 얼마나 늘었나?")
+                .lostCounterpart()).isFalse();
+        assertThat(parse("삼성전자 별도와 연결 자산총계 증감을 알려줘").lostCounterpart()).isFalse();
+    }
 }

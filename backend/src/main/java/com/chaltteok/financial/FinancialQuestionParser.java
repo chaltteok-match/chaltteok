@@ -42,12 +42,20 @@ final class FinancialQuestionParser {
      *
      * <p>{@code 전년과 비교}처럼 기간을 잇는 말은 뺀다. 연도 간 비교는 기존 경로가 처리한다.
      */
-    /** 기간을 잇는 말. {@code 전년과 비교}·{@code 2023년과 비교}는 연도 간 비교다. */
-    private static final String NOT_A_PERIOD =
-            "(?<!전년)(?<!작년)(?<!전기)(?<!당기)(?<!직전)(?<!분기)(?<!\\d년)";
+    /**
+     * {@code 와}·{@code 과} 양옆에 오는 말 중 기업일 수 없는 것.
+     *
+     * <p>{@code 연결과 별도}·{@code 매출액과 영업이익}·{@code 전년과 비교}는 기업을 잇는 말이
+     * 아니다. 한쪽이라도 이 목록에 있으면 상대 기업을 잃은 것으로 보지 않는다.
+     */
+    private static final List<String> NOT_A_COMPANY = List.of(
+            "연결기준", "별도기준", "개별기준", "연결", "별도", "개별", "기준",
+            "전년", "작년", "전기", "당기", "전분기", "직전", "올해", "금년",
+            "매출액", "영업수익", "영업이익", "당기순이익", "순이익",
+            "자산총계", "총자산", "부채총계", "총부채", "자본총계", "총자본",
+            "수치", "실적", "금액", "비율", "증감");
 
-    private static final Pattern JOINED_PAIR = Pattern.compile(
-            "[가-힣A-Za-z0-9]{2,}" + NOT_A_PERIOD + "\\s*(와|과)\\s+[가-힣A-Za-z0-9]{2,}");
+    private static final Pattern JOINED_PAIR = Pattern.compile("(와|과)\\s+");
 
     /**
      * 질문에서 인정하는 항목 표현. 문서 파서의 인정 라벨과 같은 범위로 좁혀 둔다.
@@ -118,13 +126,55 @@ final class FinancialQuestionParser {
         // 상대 기업을 못 알아본 채 한 기업 수치로 비교 답을 만들지 않는다.
         boolean lostCounterpart = mentioned.size() == 1
                 && years.size() < 2
-                && JOINED_PAIR.matcher(text).find()
-                && COMPARISON.matcher(text).find();
+                && COMPARISON.matcher(text).find()
+                && joinsTwoUnknownNames(text);
 
         return new FinancialQuestion(mentioned, targetYear, baseYear, factKey, itemLabel,
                 scope, separate || consolidated, wantsCorpRanking, lostCounterpart);
     }
 
+
+    /**
+     * {@code A와 B} 꼴에서 양옆이 둘 다 우리가 아는 낱말이 아닌지 본다.
+     *
+     * <p>기업을 하나밖에 못 풀었는데 이 꼴이면 상대 기업을 못 알아본 것이다.
+     * {@code 연결과 별도}처럼 한쪽이 아는 낱말이면 기업을 잇는 말이 아니다.
+     */
+    private static boolean joinsTwoUnknownNames(String text) {
+        Matcher matcher = JOINED_PAIR.matcher(text);
+        while (matcher.find()) {
+            String before = text.substring(0, matcher.start());
+            String after = text.substring(matcher.end());
+            if (nameLikeLength(before, true) >= 2 && nameLikeLength(after, false) >= 2
+                    && !endsWithKnownWord(before) && !startsWithKnownWord(after)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 조사 바로 앞뒤에 붙은 글자 수. 이름이라면 두 글자는 된다. */
+    private static int nameLikeLength(String text, boolean fromEnd) {
+        int count = 0;
+        for (int step = 0; step < text.length(); step++) {
+            char letter = fromEnd ? text.charAt(text.length() - 1 - step) : text.charAt(step);
+            if (!Character.isLetterOrDigit(letter)) {
+                break;
+            }
+            count++;
+        }
+        return count;
+    }
+
+    private static boolean endsWithKnownWord(String before) {
+        return NOT_A_COMPANY.stream().anyMatch(before::endsWith)
+                || before.matches(".*\\d년\\s*");
+    }
+
+    private static boolean startsWithKnownWord(String after) {
+        String trimmed = after.stripLeading();
+        return NOT_A_COMPANY.stream().anyMatch(trimmed::startsWith);
+    }
 
     private static List<Integer> years(String text) {
         List<Integer> years = new ArrayList<>();

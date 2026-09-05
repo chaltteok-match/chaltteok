@@ -116,6 +116,7 @@ final class ExchangeQuestionParser {
 
         return new ExchangeQuestion(
                 corpNames.resolve(text),
+                corpNames.resolveAll(text),
                 reportDate,
                 yearOf(reportDate, text),
                 topic,

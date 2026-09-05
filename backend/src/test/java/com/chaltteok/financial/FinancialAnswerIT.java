@@ -60,9 +60,10 @@ class FinancialAnswerIT {
     private static final String SINGLE_QUESTION = "삼성전자의 2024년 연결기준 매출액은 얼마인가?";
     private static final String COMPARISON_QUESTION =
             "삼성전자의 2024년 연결기준 매출액은 2023년 대비 얼마나 늘었는가?";
-    // 코퍼스가 담는 기간 안이지만 이 픽스처에 없는 해. 범위 밖(2019년 등)은 Handler에
-    // 닿기 전에 걸리므로, Handler의 '값 없음' 경로를 보려면 범위 안이어야 한다.
-    private static final String MISSING_QUESTION = "삼성전자의 2021년 연결기준 매출액은 얼마인가?";
+    // 코퍼스가 담는 기간 안이지만 이 픽스처의 어느 보고서에도 없는 해. 범위 밖(2019년 등)은
+    // Handler에 닿기 전에 걸리므로, Handler의 '값 없음' 경로를 보려면 범위 안이어야 한다.
+    // 픽스처의 두 사업보고서는 2021~2024년 값을 담고 있어 그 해들은 쓸 수 없다.
+    private static final String MISSING_QUESTION = "삼성전자의 2020년 연결기준 매출액은 얼마인가?";
 
     @SuppressWarnings("resource")
     @Container
@@ -173,7 +174,7 @@ class FinancialAnswerIT {
                 .andExpect(jsonPath("$.question").value(MISSING_QUESTION))
                 .andExpect(jsonPath("$.retrieved_context").exists())
                 .andExpect(jsonPath("$.think_trace").value(
-                        containsString("2021년 정기공시가 없습니다")))
+                        containsString("2020년 정기공시가 없습니다")))
                 .andExpect(jsonPath("$.answer").value("제공된 공시 데이터에서는 확인할 수 없습니다."));
 
         // 근거가 없으면 모델을 부르지 않는다. 없는 값을 만들 여지를 주지 않기 위해서다.

@@ -135,8 +135,9 @@ public class ExchangeAnswerHandler implements AnswerHandler {
         }
 
         String formName = FORM_NAMES.get(parsed.topic());
+        parsed = filingCorpOf(parsed, formName);
         if (!parsed.topic().hasFacts()) {
-            return withoutFacts(parsed, formName);
+            return withoutFacts(question, parsed, formName);
         }
 
         String summaryPrefix = "%s·%s·%s 식별".formatted(
@@ -175,7 +176,7 @@ public class ExchangeAnswerHandler implements AnswerHandler {
         }
         return parsed.largest()
                 ? largest(parsed, usable, searchSummary)
-                : single(parsed, usable, searchSummary);
+                : single(question, parsed, usable, searchSummary);
     }
 
     /**
@@ -189,18 +190,12 @@ public class ExchangeAnswerHandler implements AnswerHandler {
      * 공시하는 기업이 있다(셀트리온 2025-02-24에 3건). 어느 것을 묻는지 모르는 채 하나를
      * 고르면 다른 사건을 답하게 된다. 대신 후보의 제목을 근거로 남겨 되물을 수 있게 한다.
      */
-    private AnswerHandlerResult withoutFacts(ExchangeQuestion parsed, String formName) {
+    private AnswerHandlerResult withoutFacts(
+            String question, ExchangeQuestion parsed, String formName) {
         String summaryPrefix = "%s·%s 식별".formatted(parsed.corpName(), formName);
         List<DisclosureDocumentEntity> documents =
                 withoutSuperseded(selectDocuments(parsed, formName));
         if (documents.isEmpty()) {
-            // 그날 접수된 정정본들이 서로 다른 원공시를 고친 경우다. 문서가 있는데도
-            // '없습니다'라고 답하면 안 된다. 어느 건을 묻는지 모른다고 밝힌다.
-            List<DisclosureDocumentEntity> filedThatDay = filedOn(parsed, formName);
-            if (filedThatDay.size() > 1) {
-                return tooManyOnOneDay(parsed, filedThatDay, formName,
-                        summaryPrefix + " → 공시 %d건".formatted(filedThatDay.size()));
-            }
             return AnswerHandlerResult.unavailable(
                     summaryPrefix + " → 조건에 맞는 거래소공시를 찾지 못함",
                     "제공된 공시 데이터에 %s의 %s%s가 없습니다".formatted(
@@ -209,7 +204,14 @@ public class ExchangeAnswerHandler implements AnswerHandler {
 
         String searchSummary = summaryPrefix + " → 공시 %d건".formatted(documents.size());
         if (documents.size() > 1 && parsed.reportDate() != null) {
-            return tooManyOnOneDay(parsed, documents, formName, searchSummary);
+            // 투자판단은 사실이 없으니 제목으로 가린다. 셀트리온은 임상 진행 상황을
+            // 하루에 3건까지 따로 공시하고, 제목에 약물명·임상 단계가 들어 있다.
+            Optional<DisclosureDocumentEntity> hinted = hintedDocument(question, documents);
+            if (hinted.isEmpty()) {
+                return tooManyOnOneDay(parsed, documents, formName, searchSummary);
+            }
+            documents = List.of(hinted.get());
+            searchSummary += " → 질문의 단서로 1건 특정";
         }
 
         DisclosureDocumentEntity chosen = documents.stream()
@@ -264,14 +266,18 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                         documents.size()));
     }
 
-    /** 질문이 지정한 날에 접수된 문서. 정정본을 원공시일로 옮기기 전 상태다. */
-    private List<DisclosureDocumentEntity> filedOn(ExchangeQuestion parsed, String formName) {
-        if (parsed.reportDate() == null) {
-            return List.of();
+    /** 제목으로 어느 공시를 묻는지 가린다. 단독 1위가 없으면 비어 있다. */
+    private Optional<DisclosureDocumentEntity> hintedDocument(
+            String question, List<DisclosureDocumentEntity> documents) {
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        Map<String, DisclosureDocumentEntity> byDoc = new LinkedHashMap<>();
+        for (DisclosureDocumentEntity document : documents) {
+            byDoc.put(document.getDocId(), document);
+            values.put(document.getDocId(), titleOf(
+                    chunkRepository.findByDocumentDocIdOrderBySequenceAsc(document.getDocId()))
+                    .map(List::of).orElseGet(List::of));
         }
-        return formDocuments(parsed, formName).stream()
-                .filter(document -> parsed.reportDate().equals(document.getRceptDt()))
-                .toList();
+        return ContractHint.pick(question, values).map(byDoc::get);
     }
 
     /** 투자판단 공시의 제목. 300건 전부에 있지만 없을 때를 대비해 Optional로 둔다. */
@@ -403,9 +409,41 @@ public class ExchangeAnswerHandler implements AnswerHandler {
         }
 
         List<DisclosureDocumentEntity> onDate = onlyFiledOn(matched, parsed.reportDate());
-        return onDate.isEmpty()
-                ? onlyFiledOn(matched, originalFilingDateOf(matched, parsed.reportDate()))
-                : onDate;
+        if (!onDate.isEmpty()) {
+            return onDate;
+        }
+        // 그날 접수된 것이 전부 정정본이면 원공시일로 옮겨 찾는다. 원공시가 갈리면
+        // 갈린 만큼 모두 후보로 둔다. 비워 버리면 문서가 있는데도 '없습니다'가 나간다.
+        List<DisclosureDocumentEntity> byOriginal = new ArrayList<>();
+        for (LocalDate original : originalFilingDatesOf(matched, parsed.reportDate())) {
+            for (DisclosureDocumentEntity document : onlyFiledOn(matched, original)) {
+                if (!byOriginal.contains(document)) {
+                    byOriginal.add(document);
+                }
+            }
+        }
+        return byOriginal;
+    }
+
+    /**
+     * 질문에 나온 기업 중 <b>그 공시를 낸 쪽</b>을 고른다.
+     *
+     * <p>계약상대방을 질문에 함께 적으면 기업이 둘이 된다. 표기가 긴 쪽을 고르는 기본
+     * 규칙으로는 상대방이 이긴다. 한미반도체가 SK하이닉스와 맺은 계약을 물으면 SK하이닉스
+     * 공시를 뒤지고 「없습니다」가 나간다. 그 서식 문서를 실제로 가진 쪽을, 질문에 나온
+     * 순서대로 본다.
+     */
+    private ExchangeQuestion filingCorpOf(ExchangeQuestion parsed, String formName) {
+        if (parsed.corpCandidates().size() < 2) {
+            return parsed;
+        }
+        for (String candidate : parsed.corpCandidates()) {
+            ExchangeQuestion asked = parsed.withCorpName(candidate);
+            if (!formDocuments(asked, formName).isEmpty()) {
+                return asked;
+            }
+        }
+        return parsed;
     }
 
     /** 기업·서식·연도까지만 좁힌 문서. 공시일로 좁히기 전 후보다. */
@@ -430,22 +468,21 @@ public class ExchangeAnswerHandler implements AnswerHandler {
      * 정정됐을 때 낡은 값을 답하지 않기 위해서다. 원공시일로 기존 경로를 다시 타면 그 계약의
      * 최신 정정본이 그대로 뽑힌다.
      *
-     * <p>한 날짜에 서로 다른 계약의 정정본이 섞이면 원공시일이 갈린다. 그때는 고르지 않고
-     * {@code null}을 돌려 답변 불가로 둔다.
+     * <p>한 날짜에 서로 다른 계약의 정정본이 섞이면 원공시일이 갈린다. 그때는 갈린 날을
+     * 모두 돌려 후보로 두고, 어느 계약인지는 질문의 단서로 가린다({@link ContractHint}).
      */
-    private LocalDate originalFilingDateOf(
+    private Set<LocalDate> originalFilingDatesOf(
             List<DisclosureDocumentEntity> documents, LocalDate reportDate) {
         List<DisclosureDocumentEntity> filedOnDate = documents.stream()
                 .filter(document -> reportDate.equals(document.getRceptDt()))
                 .toList();
         if (filedOnDate.isEmpty()) {
-            return null;
+            return Set.of();
         }
         Map<String, LocalDate> targetDates = targetFilingDates(filedOnDate);
-        Set<LocalDate> originals = filedOnDate.stream()
+        return filedOnDate.stream()
                 .map(document -> targetDates.getOrDefault(document.getDocId(), document.getRceptDt()))
-                .collect(Collectors.toSet());
-        return originals.size() == 1 ? originals.iterator().next() : null;
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     /**
@@ -557,15 +594,22 @@ public class ExchangeAnswerHandler implements AnswerHandler {
 
     /** 한 건을 묻는 질문. 후보가 여러 건이면서 값이 다르면 고르지 않는다. */
     private AnswerHandlerResult single(
-            ExchangeQuestion parsed, List<ExtractedFactEntity> facts, String searchSummary) {
+            String question, ExchangeQuestion parsed,
+            List<ExtractedFactEntity> facts, String searchSummary) {
         Set<String> distinctValues = facts.stream()
                 .map(ExchangeAnswerHandler::comparableValue)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         if (distinctValues.size() > 1) {
-            return parsed.reportDate() == null
-                    ? latest(parsed, facts, searchSummary)
-                    : ambiguous(parsed, facts, searchSummary);
+            if (parsed.reportDate() == null) {
+                return latest(parsed, facts, searchSummary);
+            }
+            Optional<ExtractedFactEntity> hinted = hintedFact(question, parsed, facts);
+            if (hinted.isPresent()) {
+                return answerWith(parsed, hinted.get(), facts.size(),
+                        searchSummary + " → 질문의 단서로 계약 1건 특정");
+            }
+            return ambiguous(parsed, facts, searchSummary);
         }
         return answerWith(parsed, facts.get(0), facts.size(), searchSummary);
     }
@@ -631,6 +675,39 @@ public class ExchangeAnswerHandler implements AnswerHandler {
                 summary.append(", %s %s".formatted(item.getLabel(), item.getRawValue())));
         summary.append("에서 %s %s 확인".formatted(parsed.itemLabel(), display(fact)));
         return AnswerHandlerResult.of(evidences, summary.toString());
+    }
+
+    /**
+     * 질문이 어느 계약을 가리키는지 계약상대·계약명으로 가린다.
+     *
+     * <p>후보가 여럿일 때만 쓴다. 단독 1위가 없으면 비어 있고, 그때는 고르지 않는다.
+     */
+    private Optional<ExtractedFactEntity> hintedFact(
+            String question, ExchangeQuestion parsed, List<ExtractedFactEntity> facts) {
+        List<String> hintKeys = ContractHint.hintFactKeys(parsed.topic());
+        if (hintKeys.isEmpty() || facts.size() < 2) {
+            return Optional.empty();
+        }
+        Map<String, ExtractedFactEntity> byDoc = new LinkedHashMap<>();
+        for (ExtractedFactEntity fact : facts) {
+            byDoc.putIfAbsent(fact.getDocument().getDocId(), fact);
+        }
+        if (byDoc.size() < 2) {
+            return Optional.empty();
+        }
+
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        byDoc.keySet().forEach(docId -> values.put(docId, new ArrayList<>()));
+        for (String hintKey : hintKeys) {
+            for (ExtractedFactEntity hint
+                    : factRepository.findForAnswerByDocIds(List.copyOf(byDoc.keySet()), hintKey)) {
+                List<String> collected = values.get(hint.getDocument().getDocId());
+                if (collected != null) {
+                    collected.add(hint.getRawValue());
+                }
+            }
+        }
+        return ContractHint.pick(question, values).map(byDoc::get);
     }
 
     /** 어느 계약인지 밝히는 항목. 서식에 없거나 값이 비면 비어 있다. */

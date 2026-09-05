@@ -1,11 +1,13 @@
 package com.chaltteok.exchange;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 거래소공시 질문에서 읽어낸 조건.
  *
- * @param corpName   기업명. 식별하지 못하면 {@code null}
+ * @param corpName       기업명. 식별하지 못하면 {@code null}
+ * @param corpCandidates 질문에 나온 기업을 나온 순서대로. 공시한 기업을 가릴 때 쓴다
  * @param reportDate 질문이 지정한 공시일. 없으면 {@code null}
  * @param year       질문이 지정한 연도. 없으면 {@code null}
  * @param topic      묻는 서식 갈래
@@ -16,6 +18,7 @@ import java.time.LocalDate;
  */
 record ExchangeQuestion(
         String corpName,
+        List<String> corpCandidates,
         LocalDate reportDate,
         Integer year,
         ExchangeTopic topic,
@@ -24,6 +27,12 @@ record ExchangeQuestion(
         boolean largest,
         boolean history
 ) {
+    /** 공시한 기업을 다른 후보로 바꾼 질문. 계약상대방이 질문에 함께 나올 때 쓴다. */
+    ExchangeQuestion withCorpName(String other) {
+        return new ExchangeQuestion(other, corpCandidates, reportDate, year, topic,
+                factKey, itemLabel, largest, history);
+    }
+
     boolean isIdentified() {
         if (corpName == null || topic == null) {
             return false;

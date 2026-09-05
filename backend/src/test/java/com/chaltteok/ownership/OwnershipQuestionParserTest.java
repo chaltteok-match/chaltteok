@@ -31,7 +31,9 @@ class OwnershipQuestionParserTest {
         assertThat(OwnershipQuestionParser.parse("삼성전자 보유목적은?", CORPS).factKey())
                 .isEqualTo(OwnershipQuestionParser.PURPOSE_FACT_KEY);
         assertThat(OwnershipQuestionParser.parse("삼성전자 대량보유 보고사유는?", CORPS).factKey())
-                .isNull();
+                .isEqualTo(OwnershipQuestionParser.REPORT_REASON_FACT_KEY);
+        assertThat(OwnershipQuestionParser.parse("삼성전자 보고 사유는?", CORPS).factKey())
+                .isEqualTo(OwnershipQuestionParser.REPORT_REASON_FACT_KEY);
         assertThat(OwnershipQuestionParser.parse("삼성전자 보유 비율은?", CORPS).factKey())
                 .isEqualTo(OwnershipQuestionParser.RATIO_FACT_KEY);
         assertThat(OwnershipQuestionParser.parse("삼성전자 보유 주식 수는?", CORPS).factKey())

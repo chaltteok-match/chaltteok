@@ -18,6 +18,7 @@ final class OwnershipQuestionParser {
     static final String RATIO_FACT_KEY = "ownership_ratio";
     static final String REPORT_TYPE_FACT_KEY = "ownership_report_type";
     static final String PURPOSE_FACT_KEY = "ownership_purpose";
+    static final String REPORT_REASON_FACT_KEY = "ownership_report_reason";
 
     /**
      * 값 하나가 아니라 바뀐 과정을 묻는지.
@@ -40,6 +41,7 @@ final class OwnershipQuestionParser {
                 Map.entry("보고자", HOLDER_FACT_KEY),
                 Map.entry("보유자", HOLDER_FACT_KEY),
                 Map.entry("보유목적", PURPOSE_FACT_KEY),
+                Map.entry("보고사유", REPORT_REASON_FACT_KEY),
                 Map.entry("보고구분", REPORT_TYPE_FACT_KEY)
         );
         raw.entrySet().stream()

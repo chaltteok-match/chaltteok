@@ -1,8 +1,8 @@
 package com.chaltteok.exchange;
 
 import com.chaltteok.answer.CorpNameResolver;
+import com.chaltteok.answer.QuestionReportDate;
 
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,8 +20,6 @@ import java.util.regex.Pattern;
  */
 final class ExchangeQuestionParser {
 
-    private static final Pattern KOREAN_DATE = Pattern.compile(
-            "(\\d{4})년\\s*(\\d{1,2})월\\s*(\\d{1,2})일");
     private static final Pattern YEAR = Pattern.compile("(19|20)\\d{2}\\s*년");
     /**
      * 최댓값을 묻는 표현. 활용형까지 받는다.
@@ -114,11 +112,12 @@ final class ExchangeQuestionParser {
 
         ExchangeTopic topic = resolveTopic(text);
         String factKey = topic == null || !topic.hasFacts() ? null : resolveFactKey(text, topic);
+        LocalDate reportDate = reportDate(text);
 
         return new ExchangeQuestion(
                 corpNames.resolve(text),
-                reportDate(text),
-                year(text),
+                reportDate,
+                yearOf(reportDate, text),
                 topic,
                 factKey,
                 itemLabelOf(topic, factKey),
@@ -155,20 +154,28 @@ final class ExchangeQuestionParser {
         return best == null ? DEFAULT_FACT_KEYS.get(topic) : ITEM_KEYWORDS.get(topic).get(best);
     }
 
+    /**
+     * 공시일. 한글·ISO·점 표기를 같은 날로 읽는다.
+     *
+     * <p>한글만 읽던 때에는 {@code 2025-07-28}로 물으면 날짜를 못 읽고 그 기업의 다른 공시를
+     * 답했다. 답변 불가가 아니라 틀린 금액이 나갔다.
+     */
     private static LocalDate reportDate(String text) {
-        Matcher matcher = KOREAN_DATE.matcher(text);
-        if (!matcher.find()) {
-            return null;
+        return QuestionReportDate.parse(text);
+    }
+
+    /**
+     * 질문이 지정한 연도. 공시일을 읽었으면 그 해로 둔다.
+     *
+     * <p>{@link #year}는 {@code 년}이 붙은 표기만 센다. ISO·점 표기에서 연도가 비면 한글로
+     * 물을 때와 문서를 좁히는 범위가 달라져 같은 공시에 다른 답이 나간다.
+     */
+    private static Integer yearOf(LocalDate reportDate, String text) {
+        // 삼항으로 쓰면 int와 Integer가 섞여 year(text)가 자동 언박싱된다. null이면 터진다.
+        if (reportDate != null) {
+            return reportDate.getYear();
         }
-        try {
-            return LocalDate.of(
-                    Integer.parseInt(matcher.group(1)),
-                    Integer.parseInt(matcher.group(2)),
-                    Integer.parseInt(matcher.group(3)));
-        } catch (DateTimeException ex) {
-            // 2025년 2월 30일 같은 표기는 날짜로 두지 않는다. 판단은 Handler가 한다.
-            return null;
-        }
+        return year(text);
     }
 
     private static Integer year(String text) {

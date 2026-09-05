@@ -39,7 +39,9 @@ class HcxPromptFactoryTest {
                 .contains("예정발행가라고 밝히세요");
         assertThat(prompt.systemPrompt())
                 .contains("지분율(%)과 보유 주식 수(주)를 혼동하지 마세요")
-                .contains("보유목적과 보고사유를 혼동하지 마세요");
+                .contains("보유목적과 보고사유를 혼동하지 마세요")
+                .contains("지분 이력을 답할 때는 공시일과 값(지분율 또는 보유 주식 수)만 시간순으로 쓰세요")
+                .contains("증가·감소의 의미, 투자 판단, 원인 추측을 붙이지 마세요");
         assertThat(prompt.userPrompt())
                 .contains(QUESTION)
                 .contains(PROCESS)

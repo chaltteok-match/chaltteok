@@ -133,4 +133,17 @@ class OwnershipAnswerIT {
                 .andExpect(jsonPath("$.retrieved_context").value(containsString("8.25")))
                 .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2025-01-15")));
     }
+
+    @Test
+    void answersWhenReportDateIsOmittedAndOnlyOneFilingExists() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("지분율은 8.25%입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-OWN-NODATE")
+                        .param("question", "삼성전자 대량보유상황보고서의 지분율은?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("8.25")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일 없이 단건")));
+    }
 }

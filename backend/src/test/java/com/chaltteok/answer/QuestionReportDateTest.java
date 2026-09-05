@@ -38,4 +38,12 @@ class QuestionReportDateTest {
         assertThat(QuestionReportDate.parse("한화에어로스페이스 유상증자 시설자금은?")).isNull();
         assertThat(QuestionReportDate.parse(null)).isNull();
     }
+
+    @Test
+    void mentionsDateWhenYearMonthOrNumericDateAppears() {
+        assertThat(QuestionReportDate.mentionsDate("한화에어로스페이스가 2025년 4월 공시한 유상증자"))
+                .isTrue();
+        assertThat(QuestionReportDate.mentionsDate("한화에어로스페이스 유상증자 시설자금은?"))
+                .isFalse();
+    }
 }

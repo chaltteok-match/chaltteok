@@ -113,4 +113,17 @@ class TreasuryAnswerIT {
                 .andExpect(jsonPath("$.retrieved_context").value(containsString("50,000,000,000")))
                 .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2025-03-01")));
     }
+
+    @Test
+    void answersWhenReportDateIsOmittedAndOnlyOneFilingExists() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("취득예정금액은 500억원입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-TS-NODATE")
+                        .param("question", "삼성전자 자기주식취득결정의 취득예정금액은?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("50,000,000,000")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일 없이 단건")));
+    }
 }

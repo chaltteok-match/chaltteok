@@ -168,7 +168,15 @@ class FundraisingAnswerHandlerTest {
     }
 
     @Test
-    void returnsUnavailableWhenQuestionOmitsReportDate() {
+    void returnsUnavailableWhenQuestionOmitsReportDateAndSeveralFilingsExist() {
+        DisclosureDocumentEntity aprilEighth = hanwhaFundraisingDocument(
+                "major_20250408000012", "20250408000012", REPORT_DATE, true);
+        DisclosureDocumentEntity aprilEighteenth = hanwhaFundraisingDocument(
+                "major_20250418000001", "20250418000001", APRIL_18, false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(aprilEighth, aprilEighteenth));
+
         AnswerHandlerResult result = handler.handle("Q-FUND", QUESTION_WITHOUT_DATE);
 
         assertThat(result.isAnswerable()).isFalse();
@@ -179,6 +187,29 @@ class FundraisingAnswerHandlerTest {
                 any(),
                 any()
         );
+    }
+
+    @Test
+    void answersWhenOnlyOneFilingExistsWithoutReportDate() {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "한화에어로스페이스", DocGroup.MAJOR, "유상증자결정"))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(parValueFact(document), amountFact(document, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle("Q-FUND", QUESTION_WITHOUT_DATE);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("공시일 없이 단건")
+                .contains("major_20250408000012");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("1,600,000,000,000");
     }
 
     @ParameterizedTest
@@ -220,6 +251,11 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.unavailableReason()).contains("공시일");
         verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(),
+                any(),
+                any(),
+                any()
+        );
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtype(
                 any(),
                 any(),
                 any()

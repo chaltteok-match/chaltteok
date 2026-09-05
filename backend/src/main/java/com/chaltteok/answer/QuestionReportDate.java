@@ -20,6 +20,9 @@ public final class QuestionReportDate {
             Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})"),
             Pattern.compile("(\\d{4})\\.(\\d{1,2})\\.(\\d{1,2})")
     );
+    private static final Pattern DATE_HINT = Pattern.compile(
+            "\\d{4}년\\s*\\d{1,2}월|\\d{4}[-.]\\d{1,2}"
+    );
 
     private QuestionReportDate() {
     }
@@ -44,5 +47,12 @@ public final class QuestionReportDate {
             }
         }
         return null;
+    }
+
+    /**
+     * 연월을 적었는데 일로 읽히지 않는 경우. 날짜를 생략한 단건 조회로 넘기지 않는다.
+     */
+    public static boolean mentionsDate(String question) {
+        return question != null && DATE_HINT.matcher(question).find();
     }
 }

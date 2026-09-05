@@ -3,6 +3,7 @@ package com.chaltteok.financial;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.chaltteok.answer.AnswerHandlerResult;
+import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.DisclosureDocument;
 import com.chaltteok.disclosure.model.EvidenceChunk;
 import com.chaltteok.disclosure.model.ExtractedFact;
@@ -108,6 +109,67 @@ class FinancialAnswerHandlerIT {
                 .contains("2024년 300조 8,709억원")
                 .contains("2023년 258조 9,354억원")
                 .contains("증감률=(300870903000000-258935494000000)/258935494000000×100=16.20%");
+    }
+
+    @Test
+    void comparesTwoCompaniesInTheSameYear() {
+        AnswerHandlerResult result =
+                answer("삼성전자와 삼성전기의 2024년 연결기준 매출액을 비교하면?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        // 두 기업 모두 근거가 있어야 한다. 한쪽만 주면 모델이 나머지를 지어낸다.
+        assertThat(result.evidences()).hasSize(2);
+        assertThat(result.evidences()).extracting(RetrievedEvidence::companyName)
+                .containsExactly("삼성전자", "삼성전기");
+        assertThat(result.processSummary())
+                .contains("삼성전자와 삼성전기·2024년·매출액·연결기준 비교 식별")
+                .contains("삼성전자 300조 8,709억원")
+                .contains("삼성전기 10조 9,335억원")
+                .contains("삼성전자가 삼성전기보다 289조 9,373억원 큼");
+    }
+
+    @Test
+    void keepsTheOrderTheQuestionUses() {
+        AnswerHandlerResult result =
+                answer("삼성전기와 삼성전자의 2024년 연결기준 매출액을 비교하면?");
+
+        assertThat(result.evidences()).extracting(RetrievedEvidence::companyName)
+                .containsExactly("삼성전기", "삼성전자");
+        // 큰 쪽은 순서와 무관하게 값으로 가린다.
+        assertThat(result.processSummary()).contains("삼성전자가 삼성전기보다");
+    }
+
+    @Test
+    void refusesComparisonWhenOneCompanyHasNoValue() {
+        AnswerHandlerResult result =
+                answer("삼성전자와 한미반도체의 2024년 연결기준 매출액을 비교하면?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason())
+                .contains("한미반도체는")
+                .contains("한쪽 수치만으로는 비교할 수 없습니다");
+        // 찾은 쪽 근거는 남기되 답변 가능으로 내보내지 않는다.
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().get(0).companyName()).isEqualTo("삼성전자");
+    }
+
+    @Test
+    void refusesToRankTheWholeCorpus() {
+        // 70개사를 훑어 순위를 매기면 적재되지 않은 기업이 빠진 채 답하게 된다.
+        AnswerHandlerResult result = answer("2024년 매출액이 가장 큰 기업은?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("기업 전체를 견주어 순위를 답할 수 없습니다");
+        assertThat(result.evidences()).isEmpty();
+    }
+
+    @Test
+    void refusesWhenTheCounterpartIsNotInTheCorpus() {
+        AnswerHandlerResult result = answer("삼성전자와 애플의 2024년 매출액을 비교하면?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("비교할 기업을 제공된 공시 데이터에서 찾지 못했습니다");
+        assertThat(result.evidences()).isEmpty();
     }
 
     @Test

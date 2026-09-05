@@ -25,6 +25,31 @@ final class FinancialQuestionParser {
             "대비|증감|증가|감소|늘어|늘었|줄어|줄었|비교|성장|얼마나");
 
     /**
+     * 답으로 기업을 요구하는 말과, 비교·최상급 표현.
+     *
+     * <p>{@code 매출액이 가장 큰 기업은?}·{@code 삼성전자보다 매출액이 큰 기업은?}은 70개사를
+     * 다 훑어야 답할 수 있다. 우리가 근거를 댈 수 있는 것은 질문에 이름이 나온 기업뿐이다.
+     *
+     * <p>{@code A와 B 중 더 큰 곳은?}도 두 표현에 다 걸리지만 기업이 둘이라 비교로 처리한다.
+     */
+    private static final Pattern ASKS_FOR_A_CORP = Pattern.compile("기업|회사|곳|업체|종목");
+
+    private static final Pattern SUPERLATIVE = Pattern.compile("가장|제일|최대|최소|상위|순위|보다");
+
+    /**
+     * {@code A와 B}처럼 둘을 잇는 말. 기업을 하나밖에 못 풀었는데 이 꼴이면 상대 기업을
+     * 못 알아본 것이다. 한 기업 수치로 비교 답을 만들지 않도록 답변 불가로 둔다.
+     *
+     * <p>{@code 전년과 비교}처럼 기간을 잇는 말은 뺀다. 연도 간 비교는 기존 경로가 처리한다.
+     */
+    /** 기간을 잇는 말. {@code 전년과 비교}·{@code 2023년과 비교}는 연도 간 비교다. */
+    private static final String NOT_A_PERIOD =
+            "(?<!전년)(?<!작년)(?<!전기)(?<!당기)(?<!직전)(?<!분기)(?<!\\d년)";
+
+    private static final Pattern JOINED_PAIR = Pattern.compile(
+            "[가-힣A-Za-z0-9]{2,}" + NOT_A_PERIOD + "\\s*(와|과)\\s+[가-힣A-Za-z0-9]{2,}");
+
+    /**
      * 질문에서 인정하는 항목 표현. 문서 파서의 인정 라벨과 같은 범위로 좁혀 둔다.
      * {@code 매출}·{@code 순이익} 같은 조각은 넣지 않는다.
      * {@code 주당순이익}이 {@code 순이익}으로, {@code 매출총이익}이 {@code 매출}로 잡히면
@@ -65,7 +90,7 @@ final class FinancialQuestionParser {
     static FinancialQuestion parse(String question, CorpNameResolver corpNames) {
         String text = question == null ? "" : question;
 
-        String corpName = corpNames.resolve(text);
+        List<String> mentioned = corpNames.resolveAll(text);
         // 가장 긴 표현이 혼동 표현이면 항목을 만들지 않는다.
         // '주당순이익'에 당기순이익을, '총자산회전율'에 자산총계를 답하지 않기 위해서다.
         String matched = ALL_TERMS.stream().filter(text::contains).findFirst().orElse(null);
@@ -84,8 +109,20 @@ final class FinancialQuestionParser {
         boolean consolidated = text.contains("연결");
         Scope scope = separate ? Scope.SEPARATE : Scope.CONSOLIDATED;
 
-        return new FinancialQuestion(
-                corpName, targetYear, baseYear, factKey, itemLabel, scope, separate || consolidated);
+        // 기업이 둘 이상이면 질문에 나온 기업끼리 비교하면 된다. 하나 이하일 때만 전체 순위다.
+        // 기업이 둘 이상이면 질문에 나온 기업끼리 비교하면 된다. 하나 이하일 때만 전체 순위다.
+        boolean wantsCorpRanking = mentioned.size() < 2
+                && ASKS_FOR_A_CORP.matcher(text).find()
+                && SUPERLATIVE.matcher(text).find();
+
+        // 상대 기업을 못 알아본 채 한 기업 수치로 비교 답을 만들지 않는다.
+        boolean lostCounterpart = mentioned.size() == 1
+                && years.size() < 2
+                && JOINED_PAIR.matcher(text).find()
+                && COMPARISON.matcher(text).find();
+
+        return new FinancialQuestion(mentioned, targetYear, baseYear, factKey, itemLabel,
+                scope, separate || consolidated, wantsCorpRanking, lostCounterpart);
     }
 
 

@@ -25,6 +25,11 @@ public final class KoreanParticle {
         return hasFinalConsonant(word) ? "을" : "를";
     }
 
+    /** 와/과. 기업명을 여러 개 이어 쓸 때 쓴다. */
+    public static String and(String word) {
+        return hasFinalConsonant(word) ? "과" : "와";
+    }
+
     /** 은/는 */
     public static String topic(String word) {
         return hasFinalConsonant(word) ? "은" : "는";

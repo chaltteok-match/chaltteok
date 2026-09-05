@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 class FinancialQuestionParserTest {
 
     private static final CorpNameResolver CORPS =
-            CorpNameResolver.ofNames(List.of("삼성전자", "삼성전기", "NAVER", "한화에어로스페이스"));
+            CorpNameResolver.ofNames(List.of(
+                    "삼성전자", "삼성전기", "NAVER", "한화에어로스페이스", "SK하이닉스"));
 
     private FinancialQuestion parse(String question) {
         return FinancialQuestionParser.parse(question, CORPS);
@@ -111,5 +112,53 @@ class FinancialQuestionParserTest {
 
         assertThat(parsed.corpName()).isEqualTo("한화에어로스페이스");
         assertThat(parsed.factKey()).isNull();
+    }
+
+    @Test
+    void readsEveryCompanyForACrossCompanyComparison() {
+        FinancialQuestion parsed = parse("삼성전자와 SK하이닉스의 2024년 연결 매출액을 비교하면?");
+
+        assertThat(parsed.corpNames()).containsExactly("삼성전자", "SK하이닉스");
+        assertThat(parsed.isCorpComparison()).isTrue();
+        assertThat(parsed.corpName()).isEqualTo("삼성전자");
+    }
+
+    @Test
+    void isNotACrossCompanyComparisonWithOneCompany() {
+        FinancialQuestion parsed = parse("삼성전자의 2024년 연결 매출액은?");
+
+        assertThat(parsed.corpNames()).containsExactly("삼성전자");
+        assertThat(parsed.isCorpComparison()).isFalse();
+        assertThat(parsed.wantsCorpRanking()).isFalse();
+        assertThat(parsed.lostCounterpart()).isFalse();
+    }
+
+    @Test
+    void marksQuestionsThatWouldNeedTheWholeCorpus() {
+        // 답으로 기업을 요구하면서 기업 이름이 하나 이하다. 70개사를 다 훑어야 한다.
+        assertThat(parse("2024년 매출액이 가장 큰 기업은?").wantsCorpRanking()).isTrue();
+        assertThat(parse("2024년 매출액이 삼성전자보다 큰 기업은?").wantsCorpRanking()).isTrue();
+    }
+
+    @Test
+    void doesNotMarkRankingWhenTwoCompaniesAreNamed() {
+        // 이름이 둘이면 그 둘만 견주면 된다.
+        FinancialQuestion parsed = parse("삼성전자와 SK하이닉스 중 2024년 매출액이 더 큰 기업은?");
+
+        assertThat(parsed.wantsCorpRanking()).isFalse();
+        assertThat(parsed.isCorpComparison()).isTrue();
+    }
+
+    @Test
+    void marksComparisonsWhoseCounterpartIsNotInTheCorpus() {
+        // 상대를 못 알아본 채 한 기업 수치로 비교 답을 만들면 안 된다.
+        assertThat(parse("삼성전자와 애플의 2024년 매출액 비교").lostCounterpart()).isTrue();
+    }
+
+    @Test
+    void doesNotMistakeAPeriodComparisonForALostCounterpart() {
+        // `전년과`·`2023년과`는 기간을 잇는 말이다. 연도 간 비교 경로가 처리한다.
+        assertThat(parse("삼성전자 2024년 매출액을 전년과 비교하면?").lostCounterpart()).isFalse();
+        assertThat(parse("삼성전자 매출액을 2023년과 비교하면?").lostCounterpart()).isFalse();
     }
 }

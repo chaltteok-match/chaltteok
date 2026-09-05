@@ -1,11 +1,14 @@
 package com.chaltteok.financial;
 
 import com.chaltteok.disclosure.model.enums.Scope;
+import java.util.List;
 
 /**
  * 정기공시 재무 질문에서 읽어낸 의도.
  *
- * @param corpName      코퍼스에 존재하는 법인명
+ * @param corpNames     질문에 나온 법인명. 나온 순서대로 담는다. 기업 간 비교면 둘 이상이다
+ * @param wantsCorpRanking 코퍼스 전체를 훑어야 답할 수 있는 질문인지
+ * @param lostCounterpart  비교 상대 기업을 알아보지 못했는지
  * @param targetYear    묻는 대상 연도
  * @param baseYear      비교 질문의 기준 연도. 비교가 아니면 {@code null}
  * @param factKey       추출 항목 표준명
@@ -14,20 +17,36 @@ import com.chaltteok.disclosure.model.enums.Scope;
  * @param scopeExplicit 질문이 기준을 명시했는지 여부
  */
 public record FinancialQuestion(
-        String corpName,
+        List<String> corpNames,
         Integer targetYear,
         Integer baseYear,
         String factKey,
         String itemLabel,
         Scope scope,
-        boolean scopeExplicit
+        boolean scopeExplicit,
+        boolean wantsCorpRanking,
+        boolean lostCounterpart
 ) {
+
+    public FinancialQuestion {
+        corpNames = corpNames == null ? List.of() : List.copyOf(corpNames);
+    }
+
+    /** 첫 기업. 단일 조회 경로가 쓴다. */
+    public String corpName() {
+        return corpNames.isEmpty() ? null : corpNames.getFirst();
+    }
+
+    /** 기업이 둘 이상이면 기업 간 비교다. */
+    public boolean isCorpComparison() {
+        return corpNames.size() >= 2;
+    }
 
     public boolean isComparison() {
         return baseYear != null;
     }
 
     public boolean isAnswerable() {
-        return corpName != null && targetYear != null && factKey != null;
+        return corpName() != null && targetYear != null && factKey != null;
     }
 }

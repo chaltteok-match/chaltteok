@@ -1,12 +1,14 @@
 package com.chaltteok.answer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -118,6 +120,76 @@ public final class CorpNameResolver {
         Set<String> matched = aliasToCorpNames.get(bestAlias);
         // 같은 표기에 여러 기업이 걸리면 찍지 않는다.
         return matched.size() == 1 ? matched.iterator().next() : null;
+    }
+
+    /**
+     * 질문에 나온 기업을 모두 푼다. 나온 순서대로, 중복 없이 돌려준다.
+     *
+     * <p>{@link #resolve}는 가장 긴 표기 하나만 고른다. {@code A와 B를 비교하면}처럼 기업이
+     * 둘인 질문에서 한쪽만 잡으면 한 기업 수치만 근거로 들고 비교 답을 만들게 된다.
+     *
+     * <p>표기가 겹치면 긴 쪽을 쓴다. {@code LG이노텍}을 잡은 자리에서 {@code LG}를 다시 잡지
+     * 않는다. 여러 기업에 걸리는 표기는 {@link #resolve}와 같이 고르지 않는다.
+     */
+    public List<String> resolveAll(String question) {
+        if (isBlank(question)) {
+            return List.of();
+        }
+        String folded = fold(question);
+        boolean[] covered = new boolean[folded.length()];
+        Map<Integer, String> byPosition = new TreeMap<>();
+        List<String> longestFirst = aliasToCorpNames.keySet().stream()
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .toList();
+        for (String alias : longestFirst) {
+            Set<String> matched = aliasToCorpNames.get(alias);
+            if (matched.size() != 1) {
+                continue;
+            }
+            for (int at : occurrences(folded, alias)) {
+                int end = at + alias.length();
+                if (anyCovered(covered, at, end)) {
+                    continue;
+                }
+                Arrays.fill(covered, at, end, true);
+                byPosition.put(at, matched.iterator().next());
+            }
+        }
+        return byPosition.values().stream().distinct().toList();
+    }
+
+    private static List<Integer> occurrences(String text, String alias) {
+        List<Integer> found = new ArrayList<>();
+        int from = 0;
+        while (true) {
+            int at = text.indexOf(alias, from);
+            if (at < 0) {
+                return found;
+            }
+            if (!digitNeighbour(text, at, alias)) {
+                found.add(at);
+            }
+            from = at + 1;
+        }
+    }
+
+    /** 코드 표기는 앞뒤에 숫자가 붙으면 다른 숫자의 일부다. {@link #contains}와 같은 규칙이다. */
+    private static boolean digitNeighbour(String text, int at, String alias) {
+        if (!alias.chars().allMatch(Character::isDigit)) {
+            return false;
+        }
+        boolean digitBefore = at > 0 && Character.isDigit(text.charAt(at - 1));
+        int after = at + alias.length();
+        return digitBefore || (after < text.length() && Character.isDigit(text.charAt(after)));
+    }
+
+    private static boolean anyCovered(boolean[] covered, int start, int end) {
+        for (int index = start; index < end; index++) {
+            if (covered[index]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

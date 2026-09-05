@@ -4,6 +4,7 @@ import com.chaltteok.answer.AnswerHandler;
 import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.CorpNameResolver;
 import com.chaltteok.answer.KoreanAmountFormatter;
+import com.chaltteok.answer.QuestionReportDate;
 import com.chaltteok.answer.RetrievedEvidence;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
@@ -11,7 +12,6 @@ import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
 import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,8 +19,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
@@ -31,7 +29,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>대표 질문: 삼성전자가 2025년 3월 1일 공시한 자기주식취득결정의 취득예정금액은 얼마인가?
  *
- * <p>처분·신탁 서식은 받지 않는다. 질문의 공시일로 문서를 특정하고, 같은 날 정정본이
+ * <p>처분·신탁 서식은 받지 않는다. 질문의 공시일(한글·ISO·점 표기)로 문서를 특정하고, 같은 날 정정본이
  * 있으면 정정본만 남긴다.
  */
 @Component
@@ -41,9 +39,6 @@ public class TreasuryStockAnswerHandler implements AnswerHandler {
 
     static final int HANDLER_ORDER = 22;
     static final String DOC_SUBTYPE = "자기주식취득결정";
-    private static final Pattern KOREAN_REPORT_DATE = Pattern.compile(
-            "(\\d{4})년\\s*(\\d{1,2})월\\s*(\\d{1,2})일"
-    );
 
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
@@ -76,11 +71,11 @@ public class TreasuryStockAnswerHandler implements AnswerHandler {
                     "질문에서 검색할 기업명을 확정하지 못했습니다"
             );
         }
-        LocalDate reportDate = resolveReportDate(question);
+        LocalDate reportDate = QuestionReportDate.parse(question);
         if (reportDate == null) {
             return AnswerHandlerResult.unavailable(
                     "기업명=" + parsed.corpName() + ", 공시유형=major, 서식=" + DOC_SUBTYPE + " 검색",
-                    "질문에서 공시일(yyyy년 M월 d일)을 읽지 못해 자기주식 취득 공시를 특정하지 못했습니다"
+                    "질문에서 공시일을 읽지 못해 자기주식 취득 공시를 특정하지 못했습니다"
             );
         }
         String searchSummary = "기업명=" + parsed.corpName()
@@ -174,22 +169,6 @@ public class TreasuryStockAnswerHandler implements AnswerHandler {
                 question,
                 CorpNameResolver.of(corpIdentityRepository.findByDocGroupAndDocSubtype(
                         DocGroup.MAJOR, DOC_SUBTYPE)));
-    }
-
-    private static LocalDate resolveReportDate(String question) {
-        Matcher matcher = KOREAN_REPORT_DATE.matcher(question);
-        if (!matcher.find()) {
-            return null;
-        }
-        try {
-            return LocalDate.of(
-                    Integer.parseInt(matcher.group(1)),
-                    Integer.parseInt(matcher.group(2)),
-                    Integer.parseInt(matcher.group(3))
-            );
-        } catch (DateTimeException | NumberFormatException ignored) {
-            return null;
-        }
     }
 
     private static RetrievedEvidence toEvidence(

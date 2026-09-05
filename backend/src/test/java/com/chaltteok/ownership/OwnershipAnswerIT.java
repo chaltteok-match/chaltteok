@@ -18,6 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -112,5 +114,23 @@ class OwnershipAnswerIT {
                 .andExpect(jsonPath("$.retrieved_context").value(containsString("6.00")))
                 .andExpect(jsonPath("$.retrieved_context").value(containsString("8.25")))
                 .andExpect(jsonPath("$.think_trace").value(containsString("보유 이력")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "삼성전자가 2025년 1월 15일 공시한 대량보유상황보고서의 지분율은 얼마인가?",
+            "삼성전자가 2025-01-15 공시한 대량보유상황보고서의 지분율은 얼마인가?",
+            "삼성전자가 2025.01.15 공시한 대량보유상황보고서의 지분율은 얼마인가?"
+    })
+    void answersSameDocumentForKoreanIsoAndDottedReportDates(String question) throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("지분율은 8.25%입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-OWN-DATE")
+                        .param("question", question))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("8.25")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2025-01-15")));
     }
 }

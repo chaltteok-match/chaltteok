@@ -22,6 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -79,6 +81,28 @@ class OwnershipAnswerHandlerTest {
         assertThat(result.evidences()).hasSize(1);
         assertThat(result.evidences().getFirst().evidenceText()).contains("8.25");
         assertThat(result.processSummary()).contains("ownership_ratio=8.25");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "삼성전자가 2025-01-15 공시한 대량보유상황보고서의 지분율은 얼마인가?",
+            "삼성전자가 2025.01.15 공시한 대량보유상황보고서의 지분율은 얼마인가?"
+    })
+    void looksUpSameDocumentWhenReportDateIsIsoOrDotted(String question) {
+        DisclosureDocumentEntity document = document("holding_20250115000001", false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("삼성전자"), eq(DocGroup.HOLDING), eq("대량보유상황보고서"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(List.of(
+                        fact(document, "ownership_ratio", "보유비율 (%)", "8.25", "8.25", "%")
+                ));
+
+        AnswerHandlerResult result = handler.handle("Q-OWN", question);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences().getFirst().evidenceText()).contains("8.25");
+        assertThat(result.processSummary()).contains("공시일=2025-01-15");
     }
 
     @Test

@@ -46,6 +46,7 @@ Python 공통 출력 모델은 [`docs/data-model.md`](../docs/data-model.md)의 
 
 유상증자결정 ACODE·목적별 `fact_key` 근거는 [`docs/architecture/paid-in-capital-acodes.md`](../docs/architecture/paid-in-capital-acodes.md)를 따릅니다. `ANC_ACQ_AMT`는 총 조달금액이 아닙니다.
 자기주식취득결정(`ACODE=11332`, 구 서식 `11310`)은 취득예정 보통주식 수와 금액만 뽑습니다. 서식 근거는 [`docs/architecture/treasury-parsing.md`](../docs/architecture/treasury-parsing.md)를 따릅니다.
+전환사채권발행결정(`ACODE=11324`)·교환사채권발행결정(`ACODE=11326`)은 권면총액·표면이자율·만기일·전환/교환가액·주식 수를 뽑습니다. 서식 근거는 [`docs/architecture/bond-parsing.md`](../docs/architecture/bond-parsing.md)를 따릅니다. 신주인수권부사채와 주요사항보고서 시설투자 서식은 코퍼스에 없습니다.
 지분공시 대량보유 항목은 [`docs/architecture/holding-parsing.md`](../docs/architecture/holding-parsing.md)를 따릅니다.
 
 거래소공시 원문은 확장자가 `.xml`이지만 실제로는 HTML이고 `ACODE`가 없어, DART XML 파서를 재사용하지 않고 별도 모듈로 둡니다. 서식·라벨 식별 근거는 [`docs/architecture/exchange-parsing.md`](../docs/architecture/exchange-parsing.md)를 따릅니다. charset 선언(`euc-kr`)과 달리 실제 바이트는 UTF-8입니다.
@@ -72,6 +73,14 @@ cd preprocess
 python -m chaltteok_etl --corpus ../../corpus --out ../../work/preprocess-all.jsonl
 ```
 
+지분공시만 돌릴 때는 `--doc-group holding`을 줍니다. 산출물은 `corpus/` 아래 두어도 되고,
+그 경로는 Git에 올라가지 않습니다.
+
+```bash
+cd preprocess
+python -m chaltteok_etl --corpus ../corpus --out ../corpus/preprocessed_holding.jsonl --doc-group holding
+```
+
 | 옵션 | 설명 |
 | --- | --- |
 | `--corpus` | 코퍼스 루트 경로 (필수) |
@@ -94,3 +103,7 @@ cd ../backend
 ./gradlew bootRun --args='--spring.profiles.active=local,load \
     --chaltteok.load.path=/절대/경로/preprocess-all.jsonl'
 ```
+
+지분공시 JSONL은 같은 명령의 `--chaltteok.load.path`에
+`corpus/preprocessed_holding.jsonl`의 절대 경로를 넣습니다. 유형만 지우고 다시 넣는 SQL과
+확인 질문은 `backend/README.md`를 따릅니다.

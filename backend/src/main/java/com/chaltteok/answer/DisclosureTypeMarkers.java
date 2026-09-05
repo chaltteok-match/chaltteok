@@ -26,6 +26,9 @@ public final class DisclosureTypeMarkers {
     /** 주요사항보고서 자기주식취득결정. 처분·신탁도 자기주식 질문이라 함께 둔다. */
     public static final List<String> TREASURY = List.of("자기주식");
 
+    /** 주요사항보고서 전환·교환사채권 발행결정. */
+    public static final List<String> BOND = List.of("전환사채", "교환사채");
+
     /** 지분공시 대량보유상황보고서. */
     public static final List<String> OWNERSHIP =
             List.of("대량보유", "대량 보유", "지분공시", "보유상황");

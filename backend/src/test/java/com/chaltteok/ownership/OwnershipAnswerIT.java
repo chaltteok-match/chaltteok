@@ -93,4 +93,24 @@ class OwnershipAnswerIT {
                 .andExpect(jsonPath("$.think_trace").value(containsString("ownership_ratio")))
                 .andExpect(jsonPath("$.answer").value(containsString("8.25")));
     }
+
+    @Test
+    void tracesHoldingHistoryAcrossReports() throws Exception {
+        Path extra = tempDir.resolve("holding-initial.jsonl");
+        try (InputStream in = new ClassPathResource("load/holding-samsung-20241201000001.jsonl").getInputStream()) {
+            Files.copy(in, extra);
+        }
+        LoadSummary extraSummary = loader.load(extra);
+        assertThat(extraSummary.hasFailure()).isFalse();
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("지분율이 6.00%에서 8.25%로 바뀌었습니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-OWN-002")
+                        .param("question", "삼성전자 대량보유상황보고서 지분율은 어떻게 바뀌었나?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("6.00")))
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("8.25")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("보유 이력")));
+    }
 }

@@ -4,6 +4,7 @@ import com.chaltteok.answer.CorpNameResolver;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * 질문에서 기업과 대량보유 항목을 읽는다.
@@ -18,6 +19,14 @@ final class OwnershipQuestionParser {
     static final String REPORT_TYPE_FACT_KEY = "ownership_report_type";
     static final String PURPOSE_FACT_KEY = "ownership_purpose";
 
+    /**
+     * 값 하나가 아니라 바뀐 과정을 묻는지.
+     * {@code 정정}은 공시 한 건을 가리키는 말로도 쓰이므로 빼 둔다.
+     * {@code 해소}는 보고 사건 이력을 가리키는 말로 본다.
+     */
+    private static final Pattern HISTORY = Pattern.compile(
+            "변경|바뀌|바뀐|바뀔|달라진|이력|추이|변화|해소|어떻게\\s*변");
+
     private static final Map<String, String> ITEM_KEYWORDS = new LinkedHashMap<>();
 
     static {
@@ -31,7 +40,6 @@ final class OwnershipQuestionParser {
                 Map.entry("보고자", HOLDER_FACT_KEY),
                 Map.entry("보유자", HOLDER_FACT_KEY),
                 Map.entry("보유목적", PURPOSE_FACT_KEY),
-                Map.entry("보고사유", PURPOSE_FACT_KEY),
                 Map.entry("보고구분", REPORT_TYPE_FACT_KEY)
         );
         raw.entrySet().stream()
@@ -53,7 +61,8 @@ final class OwnershipQuestionParser {
                 .orElse(null);
         String factKey = item == null ? null : ITEM_KEYWORDS.get(item);
         String itemLabel = item == null ? "대량보유 현황" : item;
-        return new OwnershipQuestion(corpName, factKey, itemLabel);
+        boolean history = HISTORY.matcher(text).find();
+        return new OwnershipQuestion(corpName, factKey, itemLabel, history);
     }
 
     /** 평가 질의의 띄어쓰기 차이를 무시한다. {@code 보유 목적}과 {@code 보유목적}을 같게 본다. */

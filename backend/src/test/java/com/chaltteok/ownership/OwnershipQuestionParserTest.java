@@ -30,6 +30,8 @@ class OwnershipQuestionParserTest {
                 .isEqualTo(OwnershipQuestionParser.PURPOSE_FACT_KEY);
         assertThat(OwnershipQuestionParser.parse("삼성전자 보유목적은?", CORPS).factKey())
                 .isEqualTo(OwnershipQuestionParser.PURPOSE_FACT_KEY);
+        assertThat(OwnershipQuestionParser.parse("삼성전자 대량보유 보고사유는?", CORPS).factKey())
+                .isNull();
         assertThat(OwnershipQuestionParser.parse("삼성전자 보유 비율은?", CORPS).factKey())
                 .isEqualTo(OwnershipQuestionParser.RATIO_FACT_KEY);
         assertThat(OwnershipQuestionParser.parse("삼성전자 보유 주식 수는?", CORPS).factKey())
@@ -46,6 +48,25 @@ class OwnershipQuestionParserTest {
 
         assertThat(parsed.factKey()).isNull();
         assertThat(parsed.itemLabel()).isEqualTo("대량보유 현황");
+        assertThat(parsed.history()).isFalse();
+    }
+
+    @Test
+    void treatsProcessWordingAsHistory() {
+        assertThat(OwnershipQuestionParser.parse(
+                "삼성전자 대량보유상황보고서 지분율은 어떻게 바뀌었나?", CORPS).history())
+                .isTrue();
+        assertThat(OwnershipQuestionParser.parse("삼성전자 지분공시 변경된 내역은?", CORPS).history())
+                .isTrue();
+        assertThat(OwnershipQuestionParser.parse("삼성전자 대량보유 해소 보고는?", CORPS).history())
+                .isTrue();
+        assertThat(OwnershipQuestionParser.parse(
+                "삼성전자가 2025년 1월 15일 정정한 대량보유상황보고서의 지분율은?", CORPS).history())
+                .isFalse();
+        OwnershipQuestion purposeHistory = OwnershipQuestionParser.parse(
+                "삼성전자 대량보유상황보고서 보유목적은 어떻게 바뀌었나?", CORPS);
+        assertThat(purposeHistory.history()).isTrue();
+        assertThat(purposeHistory.asksForPurposeHistory()).isTrue();
     }
 
     @Test

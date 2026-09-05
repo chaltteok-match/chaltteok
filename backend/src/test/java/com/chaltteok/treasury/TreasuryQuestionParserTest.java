@@ -23,6 +23,25 @@ class TreasuryQuestionParserTest {
     }
 
     @Test
+    void readsSpacedPlannedAmountAsAmountOnly() {
+        TreasuryQuestion parsed = TreasuryQuestionParser.parse(
+                "삼성전자가 2026년 3월 18일 공시한 자기주식 취득 예정 금액은?",
+                CORPS);
+
+        assertThat(parsed.factKey()).isEqualTo(TreasuryQuestionParser.AMOUNT_FACT_KEY);
+        assertThat(parsed.itemLabel()).isEqualTo("취득예정금액");
+    }
+
+    @Test
+    void readsSpacedPlannedShareCountAsSharesOnly() {
+        TreasuryQuestion parsed = TreasuryQuestionParser.parse(
+                "삼성전자가 2026년 3월 18일 공시한 자기주식 취득 예정 주식 수는?",
+                CORPS);
+
+        assertThat(parsed.factKey()).isEqualTo(TreasuryQuestionParser.SHARES_FACT_KEY);
+    }
+
+    @Test
     void treatsPlainAcquisitionQuestionAsOverview() {
         TreasuryQuestion parsed = TreasuryQuestionParser.parse(
                 "삼성전자가 2025년 3월 1일 공시한 자기주식취득결정은?",

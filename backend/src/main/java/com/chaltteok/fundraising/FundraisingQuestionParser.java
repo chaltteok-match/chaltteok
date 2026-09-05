@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
  * 포함과 제외가 같이 나와도 제외에 붙은 목적만 뺀다. {@code 포함한}만 있으면 전체 합계다.
  * {@code 어떻게 바뀌었나}·{@code 변경된 내역}처럼 바뀐 과정을 물으면 이력 질문이다.
  * {@code 정정한}·{@code 정정공시}만 있으면 그 공시 한 건을 고르는 말로 본다.
+ * {@code 종류주식}·{@code 기타주식}·{@code 우선주}는 종류주식 신주 수다.
  */
 final class FundraisingQuestionParser {
 
@@ -64,13 +65,20 @@ final class FundraisingQuestionParser {
                 Map.entry("액면가액", FundraisingAnswerHandler.PAR_VALUE_FACT_KEY),
                 Map.entry("액면가", FundraisingAnswerHandler.PAR_VALUE_FACT_KEY),
                 Map.entry("신주의 종류와 수", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY),
+                Map.entry("종류주식", FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY),
+                Map.entry("기타주식", FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY),
+                Map.entry("우선주", FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY),
                 Map.entry("신주 수", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY),
                 Map.entry("신주수", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY),
                 Map.entry("신주", FundraisingAnswerHandler.NEW_SHARES_FACT_KEY)
         );
         raw.entrySet().stream()
-                .sorted(Comparator.comparingInt((Map.Entry<String, String> entry) -> entry.getKey().length())
-                        .reversed())
+                .sorted(Comparator
+                        .comparingInt((Map.Entry<String, String> entry) -> compact(entry.getKey()).length())
+                        .reversed()
+                        .thenComparingInt(entry ->
+                        FundraisingAnswerHandler.OTHER_CLASS_NEW_SHARES_FACT_KEY.equals(entry.getValue())
+                                ? 0 : 1))
                 .forEach(entry -> ISSUANCE_KEYWORDS.put(entry.getKey(), entry.getValue()));
     }
 
@@ -112,8 +120,9 @@ final class FundraisingQuestionParser {
             return new FundraisingQuestion(
                     corpName, PURPOSE_KEYWORDS.get(purpose), purpose, Set.of(), history);
         }
+        String compactQuestion = compact(text);
         String issuance = ISSUANCE_KEYWORDS.keySet().stream()
-                .filter(text::contains)
+                .filter(keyword -> compactQuestion.contains(compact(keyword)))
                 .findFirst()
                 .orElse(null);
         if (issuance != null) {
@@ -250,6 +259,11 @@ final class FundraisingQuestionParser {
             }
         }
         return false;
+    }
+
+    /** 평가 질의의 띄어쓰기 차이를 무시한다. {@code 종류주식 신주 수}에서 {@code 신주 수}보다 {@code 종류주식}을 먼저 본다. */
+    private static String compact(String value) {
+        return value.replaceAll("\\s+", "");
     }
 
 }

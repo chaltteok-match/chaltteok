@@ -34,6 +34,10 @@ delete from evidence_chunk   where doc_id in (select doc_id from disclosure_docu
 delete from disclosure_document where doc_group = 'EXCHANGE';
 ```
 
+지분공시만 다시 넣을 때도 같습니다. `doc_group`만 `HOLDING`으로 바꿉니다.
+테스트 픽스처를 먼저 넣었다면 실코퍼스 JSONL을 upsert해도 다른 `doc_id`는 남습니다.
+다시 넣기 전에 HOLDING 행을 지우는 편이 낫습니다.
+
 ```bash
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/result.jsonl'
@@ -65,6 +69,28 @@ cd backend
 
 실패해도 나머지 줄은 저장되고 실패한 줄 번호와 `doc_id`가 보고되므로,
 순서를 고쳐 같은 파일을 다시 적재하면 됩니다(재적재해도 결과는 같습니다).
+
+지분공시(대량보유상황보고서)는 파서가 `relations`를 비웁니다. 이력은 적재된 문서와
+`OwnershipAnswerHandler`가 잇고, JSONL 줄 순서 때문에 적재가 실패하지는 않습니다.
+원문은 `corpus/raw/holding`에 있고, 산출물은 Git에 올리지 않습니다(`corpus/`는 gitignore).
+
+```bash
+cd preprocess
+source .venv/bin/activate
+python -m chaltteok_etl --corpus ../corpus --out ../corpus/preprocessed_holding.jsonl --doc-group holding
+```
+
+전처리가 실패 0건인지 확인한 뒤 적재합니다. 경로를 이 저장소에 맞게 바꿉니다.
+
+```bash
+cd backend
+./gradlew bootRun --args='--spring.profiles.active=local,load --chaltteok.load.path=/절대/경로/corpus/preprocessed_holding.jsonl'
+```
+
+적재가 끝나면 `disclosure_document`에서 `doc_group = HOLDING` 건수가 전처리 성공 건수와
+같아야 합니다. 로컬에서 한 번 돌린 결과는 문서 1,083건, 근거·사실 각 5,415건, 관계 0건,
+추출 상태 `ok` 5,415건이었습니다. 픽스처가 아닌 공시로 단건을 보려면 예를 들어
+`삼성전자가 2023년 1월 20일 공시한 대량보유상황보고서의 지분율은?`을 씁니다.
 
 `load` 프로필을 켜지 않으면 적재가 시작되지 않습니다. 적재를 실행하는 `JsonlLoadRunner`가
 `load` 프로필에서만 등록되기 때문입니다. 평가 API로 띄운 서버는 적재 동작을 하지 않습니다.

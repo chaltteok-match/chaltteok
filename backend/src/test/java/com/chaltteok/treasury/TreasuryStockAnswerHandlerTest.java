@@ -81,6 +81,32 @@ class TreasuryStockAnswerHandlerTest {
     }
 
     @Test
+    void answersSpacedPlannedAmountWithoutIncludingShareCount() {
+        DisclosureDocumentEntity document = document();
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("삼성전자"), eq(DocGroup.MAJOR), eq("자기주식취득결정"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250301000001"))
+                .thenReturn(List.of(
+                        fact(document, TreasuryQuestionParser.SHARES_FACT_KEY, "취득예정주식",
+                                "1,000,000", "1000000", "share", "주"),
+                        fact(document, TreasuryQuestionParser.AMOUNT_FACT_KEY, "취득예정금액",
+                                "50,000,000,000", "50000000000", "KRW", "원")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-TS-SPACE",
+                "삼성전자가 2025년 3월 1일 공시한 자기주식 취득 예정 금액은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences()).hasSize(1);
+        assertThat(result.evidences().getFirst().evidenceText()).contains("50,000,000,000");
+        assertThat(result.evidences().getFirst().evidenceText()).doesNotContain("1,000,000");
+        assertThat(result.processSummary()).contains("treasury_planned_common_amount");
+        assertThat(result.processSummary()).doesNotContain("treasury_planned_common_shares");
+    }
+
+    @Test
     void requiresReportDate() {
         AnswerHandlerResult result = handler.handle("Q-TS", "삼성전자 자기주식취득결정의 취득예정금액은?");
         assertThat(result.isAnswerable()).isFalse();

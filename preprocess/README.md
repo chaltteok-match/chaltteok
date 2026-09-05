@@ -72,6 +72,14 @@ cd preprocess
 python -m chaltteok_etl --corpus ../../corpus --out ../../work/preprocess-all.jsonl
 ```
 
+지분공시만 돌릴 때는 `--doc-group holding`을 줍니다. 산출물은 `corpus/` 아래 두어도 되고,
+그 경로는 Git에 올라가지 않습니다.
+
+```bash
+cd preprocess
+python -m chaltteok_etl --corpus ../corpus --out ../corpus/preprocessed_holding.jsonl --doc-group holding
+```
+
 | 옵션 | 설명 |
 | --- | --- |
 | `--corpus` | 코퍼스 루트 경로 (필수) |
@@ -94,3 +102,7 @@ cd ../backend
 ./gradlew bootRun --args='--spring.profiles.active=local,load \
     --chaltteok.load.path=/절대/경로/preprocess-all.jsonl'
 ```
+
+지분공시 JSONL은 같은 명령의 `--chaltteok.load.path`에
+`corpus/preprocessed_holding.jsonl`의 절대 경로를 넣습니다. 유형만 지우고 다시 넣는 SQL과
+확인 질문은 `backend/README.md`를 따릅니다.

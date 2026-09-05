@@ -719,7 +719,10 @@ class FundraisingAnswerHandlerTest {
 
         assertThat(result.isAnswerable()).isTrue();
         assertThat(result.evidences().getFirst().evidenceText()).contains("539,000");
-        assertThat(result.processSummary()).contains("fundraising_common_planned_issue_price");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("예정발행가");
+        assertThat(result.processSummary())
+                .contains("fundraising_common_planned_issue_price")
+                .contains("예정발행가");
     }
 
     private static DisclosureDocumentEntity hanwhaFundraisingDocument(
@@ -813,7 +816,7 @@ class FundraisingAnswerHandlerTest {
         fact.setFactId(document.getDocId() + ":fact:planned-price");
         fact.setDocument(document);
         fact.setFactKey(FundraisingAnswerHandler.PLANNED_ISSUE_PRICE_FACT_KEY);
-        fact.setLabel("6. 신주 발행가액 > 예정발행가 > 보통주식 (원)");
+        fact.setLabel("6. 신주 발행가액 > 보통주식 (원)");
         fact.setRawValue("539,000");
         fact.setRawUnit("원");
         fact.setNormalizedValue("539000");

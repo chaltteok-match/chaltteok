@@ -18,6 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -92,5 +94,23 @@ class TreasuryAnswerIT {
                 .andExpect(jsonPath("$.retrieved_context").value(containsString("50,000,000,000")))
                 .andExpect(jsonPath("$.think_trace").value(containsString("treasury_planned_common_amount")))
                 .andExpect(jsonPath("$.answer").value(containsString("500억")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "삼성전자가 2025년 3월 1일 공시한 자기주식취득결정의 취득예정금액은 얼마인가?",
+            "삼성전자가 2025-03-01 공시한 자기주식취득결정의 취득예정금액은 얼마인가?",
+            "삼성전자가 2025.03.01 공시한 자기주식취득결정의 취득예정금액은 얼마인가?"
+    })
+    void answersSameDocumentForKoreanIsoAndDottedReportDates(String question) throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("취득예정금액은 500억원입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-TS-DATE")
+                        .param("question", question))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("50,000,000,000")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2025-03-01")));
     }
 }

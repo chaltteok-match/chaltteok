@@ -18,6 +18,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -78,6 +80,29 @@ class TreasuryStockAnswerHandlerTest {
         assertThat(result.evidences()).hasSize(1);
         assertThat(result.evidences().getFirst().evidenceText()).contains("50,000,000,000");
         assertThat(result.processSummary()).contains("treasury_planned_common_amount");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "삼성전자가 2025-03-01 공시한 자기주식취득결정의 취득예정금액은 얼마인가?",
+            "삼성전자가 2025.03.01 공시한 자기주식취득결정의 취득예정금액은 얼마인가?"
+    })
+    void looksUpSameDocumentWhenReportDateIsIsoOrDotted(String question) {
+        DisclosureDocumentEntity document = document();
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("삼성전자"), eq(DocGroup.MAJOR), eq("자기주식취득결정"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250301000001"))
+                .thenReturn(List.of(
+                        fact(document, TreasuryQuestionParser.AMOUNT_FACT_KEY, "취득예정금액",
+                                "50,000,000,000", "50000000000", "KRW", "원")
+                ));
+
+        AnswerHandlerResult result = handler.handle("Q-TS", question);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.evidences().getFirst().evidenceText()).contains("50,000,000,000");
+        assertThat(result.processSummary()).contains("공시일=2025-03-01");
     }
 
     @Test

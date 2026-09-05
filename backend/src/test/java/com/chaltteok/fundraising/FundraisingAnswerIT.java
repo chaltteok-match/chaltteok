@@ -24,6 +24,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -240,5 +242,24 @@ class FundraisingAnswerIT {
                 .andExpect(jsonPath("$.question_id").value("Q-FUND-503-AUTH"))
                 .andExpect(jsonPath("$.error_code").value("SERVICE_UNAVAILABLE"))
                 .andExpect(jsonPath("$.retryable").value(true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "한화에어로스페이스가 2025년 4월 8일 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?",
+            "한화에어로스페이스가 2025-04-08 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?",
+            "한화에어로스페이스가 2025.04.08 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?"
+    })
+    void answersSameDocumentForKoreanIsoAndDottedReportDates(String question) throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult(HCX_ANSWER, "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-FUND-DATE")
+                        .param("question", question))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("1,600,000,000,000")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("major_20250408000012")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2025-04-08")));
     }
 }

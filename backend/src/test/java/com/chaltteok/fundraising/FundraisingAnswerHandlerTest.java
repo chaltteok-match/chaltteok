@@ -23,6 +23,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -168,6 +170,51 @@ class FundraisingAnswerHandlerTest {
     @Test
     void returnsUnavailableWhenQuestionOmitsReportDate() {
         AnswerHandlerResult result = handler.handle("Q-FUND", QUESTION_WITHOUT_DATE);
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("공시일");
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(),
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "한화에어로스페이스가 2025-04-08 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?",
+            "한화에어로스페이스가 2025.04.08 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?"
+    })
+    void looksUpSameDocumentWhenReportDateIsIsoOrDotted(String question) {
+        DisclosureDocumentEntity document = hanwhaFundraisingDocument(
+                "major_20250408000012",
+                "20250408000012",
+                REPORT_DATE,
+                true
+        );
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                "한화에어로스페이스",
+                DocGroup.MAJOR,
+                "유상증자결정",
+                REPORT_DATE
+        )).thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250408000012"))
+                .thenReturn(List.of(parValueFact(document), amountFact(document, "1,600,000,000,000", "1600000000000")));
+
+        AnswerHandlerResult result = handler.handle("Q-FUND", question);
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary()).contains("major_20250408000012");
+        assertThat(result.evidences().getFirst().reportDate()).isEqualTo(REPORT_DATE);
+    }
+
+    @Test
+    void returnsUnavailableWhenReportDateOmitsDay() {
+        AnswerHandlerResult result = handler.handle(
+                "Q-FUND",
+                "한화에어로스페이스가 2025년 4월 공시한 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?"
+        );
 
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("공시일");

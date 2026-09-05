@@ -40,7 +40,6 @@ final class OwnershipQuestionParser {
                 Map.entry("보고자", HOLDER_FACT_KEY),
                 Map.entry("보유자", HOLDER_FACT_KEY),
                 Map.entry("보유목적", PURPOSE_FACT_KEY),
-                Map.entry("보고사유", PURPOSE_FACT_KEY),
                 Map.entry("보고구분", REPORT_TYPE_FACT_KEY)
         );
         raw.entrySet().stream()

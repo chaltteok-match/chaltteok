@@ -13,4 +13,8 @@ record OwnershipQuestion(String corpName, String factKey, String itemLabel, bool
     boolean asksForSpecificItem() {
         return factKey != null;
     }
+
+    boolean asksForPurposeHistory() {
+        return history && OwnershipQuestionParser.PURPOSE_FACT_KEY.equals(factKey);
+    }
 }

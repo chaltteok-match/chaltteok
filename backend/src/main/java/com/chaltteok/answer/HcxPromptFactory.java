@@ -29,6 +29,7 @@ public class HcxPromptFactory {
             전환사채와 교환사채를 혼동하지 마세요. 권면총액과 전환가액·교환가액을 혼동하지 마세요.
             발행가가 확정값 없이 예정발행가만 있으면 예정발행가라고 밝히세요.
             지분율(%)과 보유 주식 수(주)를 혼동하지 마세요.
+            보유목적과 보고사유를 혼동하지 마세요.
             """;
 
     public HcxPrompt create(String question, String retrievedContext, String processSummary) {

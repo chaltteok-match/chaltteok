@@ -94,6 +94,39 @@ class OwnershipHoldingHistoryTest {
                 .contains("holding_10");
     }
 
+    @Test
+    void purposeHistoryKeepsFirstAndLastWhenPurposeDidNotChange() {
+        OwnershipHoldingHistory.Step first = step(
+                "holding_1", LocalDate.of(2024, 1, 1), "국민연금공단", "신규",
+                "50000000", "8.25", "단순투자");
+        OwnershipHoldingHistory.Step second = step(
+                "holding_2", LocalDate.of(2025, 1, 15), "국민연금공단", "변경",
+                "50000000", "8.25", "단순투자");
+
+        assertThat(OwnershipHoldingHistory.collapseHistory(List.of(first, second), true))
+                .containsExactly(first, second);
+    }
+
+    @Test
+    void quantityHistoryFoldsPurposeOnlyChange() {
+        OwnershipHoldingHistory.Step first = step(
+                "holding_1", LocalDate.of(2024, 1, 1), "국민연금공단", "신규",
+                "50000000", "8.25", "단순투자");
+        OwnershipHoldingHistory.Step middle = step(
+                "holding_2", LocalDate.of(2024, 6, 1), "국민연금공단", "변경",
+                "50000000", "8.25", "경영권 영향");
+        OwnershipHoldingHistory.Step last = step(
+                "holding_3", LocalDate.of(2025, 1, 15), "국민연금공단", "변경",
+                "50000000", "8.25", "경영권 영향");
+
+        assertThat(OwnershipHoldingHistory.collapseHistory(List.of(first, middle, last)))
+                .extracting(step -> step.document().getDocId())
+                .containsExactly("holding_1", "holding_3");
+        assertThat(OwnershipHoldingHistory.collapseHistory(List.of(first, middle, last), true))
+                .extracting(step -> step.document().getDocId())
+                .containsExactly("holding_1", "holding_2");
+    }
+
     private static OwnershipHoldingHistory.Step step(
             String docId,
             LocalDate date,
@@ -102,18 +135,33 @@ class OwnershipHoldingHistoryTest {
             String shares,
             String ratio
     ) {
+        return step(docId, date, holder, reportType, shares, ratio, null);
+    }
+
+    private static OwnershipHoldingHistory.Step step(
+            String docId,
+            LocalDate date,
+            String holder,
+            String reportType,
+            String shares,
+            String ratio,
+            String purpose
+    ) {
         DisclosureDocumentEntity document = new DisclosureDocumentEntity();
         document.setDocId(docId);
         document.setRceptNo(docId);
         document.setRceptDt(date);
         document.setDocGroup(DocGroup.HOLDING);
         document.setCorrection(false);
-        List<ExtractedFactEntity> facts = List.of(
+        List<ExtractedFactEntity> facts = new ArrayList<>(List.of(
                 fact(document, OwnershipQuestionParser.HOLDER_FACT_KEY, holder),
                 fact(document, OwnershipQuestionParser.REPORT_TYPE_FACT_KEY, reportType),
                 fact(document, OwnershipQuestionParser.SHARES_FACT_KEY, shares),
                 fact(document, OwnershipQuestionParser.RATIO_FACT_KEY, ratio)
-        );
+        ));
+        if (purpose != null) {
+            facts.add(fact(document, OwnershipQuestionParser.PURPOSE_FACT_KEY, purpose));
+        }
         return OwnershipHoldingHistory.stepOf(document, facts);
     }
 

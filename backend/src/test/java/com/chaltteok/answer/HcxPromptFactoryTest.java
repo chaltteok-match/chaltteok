@@ -38,7 +38,8 @@ class HcxPromptFactoryTest {
                 .contains("권면총액과 전환가액")
                 .contains("예정발행가라고 밝히세요");
         assertThat(prompt.systemPrompt())
-                .contains("지분율(%)과 보유 주식 수(주)를 혼동하지 마세요");
+                .contains("지분율(%)과 보유 주식 수(주)를 혼동하지 마세요")
+                .contains("보유목적과 보고사유를 혼동하지 마세요");
         assertThat(prompt.userPrompt())
                 .contains(QUESTION)
                 .contains(PROCESS)

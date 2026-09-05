@@ -102,18 +102,25 @@ final class OwnershipHoldingHistory {
     }
 
     /**
-     * 같은 날 정정본이 있으면 원본은 빼고, 주식 수·지분율이 그대로인 단계는 접는다.
-     * 값이 끝까지 같으면 처음과 마지막만 남겨 보고는 있었으나 수량은 같았음을 보인다.
+     * 같은 날 정정본이 있으면 원본은 빼고, 값이 그대로인 단계는 접는다.
+     * 값이 끝까지 같으면 처음과 마지막만 남겨 보고는 있었으나 값은 같았음을 보인다.
+     *
+     * @param byPurpose 참이면 보유목적 문장 기준으로 접고, 아니면 주식 수·지분율 기준이다
      */
     static List<Step> collapseHistory(List<Step> alongChain) {
+        return collapseHistory(alongChain, false);
+    }
+
+    static List<Step> collapseHistory(List<Step> alongChain, boolean byPurpose) {
         List<Step> sameDay = preferCorrectionsByDay(alongChain);
         List<Step> changed = new ArrayList<>();
         String previous = null;
         for (Step step : sameDay) {
-            if (step.quantityKey().equals(previous)) {
+            String key = byPurpose ? purposeKey(step.facts()) : step.quantityKey();
+            if (key.equals(previous)) {
                 continue;
             }
-            previous = step.quantityKey();
+            previous = key;
             changed.add(step);
         }
         if (changed.size() >= 2 || sameDay.size() < 2) {
@@ -229,6 +236,10 @@ final class OwnershipHoldingHistory {
                         Comparator.nullsLast(String::compareTo));
     }
 
+    static String purposeKey(List<ExtractedFactEntity> facts) {
+        return compact(firstRaw(facts, OwnershipQuestionParser.PURPOSE_FACT_KEY));
+    }
+
     private static String quantityKey(List<ExtractedFactEntity> facts) {
         return valueOf(facts, OwnershipQuestionParser.SHARES_FACT_KEY)
                 + "|"
@@ -257,6 +268,6 @@ final class OwnershipHoldingHistory {
     }
 
     private static String compact(String value) {
-        return value == null ? null : value.replaceAll("\\s+", "");
+        return value == null ? "" : value.replaceAll("\\s+", "");
     }
 }

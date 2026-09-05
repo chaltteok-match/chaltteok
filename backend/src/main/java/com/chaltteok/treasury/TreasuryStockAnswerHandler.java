@@ -74,13 +74,6 @@ public class TreasuryStockAnswerHandler implements AnswerHandler {
         }
         LocalDate reportDate = QuestionReportDate.parse(question);
 
-        if (reportDate == null) {
-            return AnswerHandlerResult.unavailable(
-                    "기업명=" + parsed.corpName() + ", 공시유형=major, 서식=" + DOC_SUBTYPE + " 검색",
-                    "질문에서 공시일을 읽지 못해 자기주식 취득 공시를 특정하지 못했습니다"
-            );
-        }
-
         String searchSummary = "기업명=" + parsed.corpName()
                 + ", 공시유형=major, 서식=" + DOC_SUBTYPE;
         List<DisclosureDocumentEntity> documents;

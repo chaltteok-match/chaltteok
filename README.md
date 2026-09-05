@@ -13,7 +13,7 @@
 | 응답 | `application/json`, 5개 필드 모두 문자열 |
 | 인증 | 없음 |
 
-실행 방법과 필요한 환경변수는 [`backend/README.md`](backend/README.md#평가-서버로-띄우기)에 있습니다.
+서버에 올리는 절차는 [`docs/deploy.md`](docs/deploy.md), 실행 방법과 환경변수는 [`backend/README.md`](backend/README.md#평가-서버로-띄우기)에 있습니다.
 
 ## MVP 목표
 

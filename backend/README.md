@@ -1,5 +1,102 @@
 # Backend 실행 안내
 
+## 평가 서버로 띄우기
+
+`server` 프로필은 DB 접속 정보를 **환경변수로** 받습니다. 저장소를 clone한 곳에서 값만 채우면 뜹니다.
+
+`local` 프로필로는 서버에서 뜨지 않습니다. 값이 `application-local.yml`에 있는데 그 파일은 커밋하지 않기 때문입니다.
+프로필을 켜지 않으면 `application.yml`의 기본값 `local`로 떠서 아래처럼 죽습니다.
+
+```
+Failed to configure a DataSource: 'url' attribute is not specified
+APPLICATION FAILED TO START
+```
+
+### 환경변수
+
+| 이름 | 필수 | 기본값 | 설명 |
+| --- | :---: | --- | --- |
+| `SPRING_PROFILES_ACTIVE` | ○ | — | `server`로 둡니다 |
+| `DB_URL` | ○ | — | `jdbc:postgresql://호스트:포트/chaltteok` |
+| `DB_USERNAME` | ○ | — | DB 사용자 |
+| `DB_PASSWORD` | ○ | — | DB 비밀번호 |
+| `HCX_ENABLED` | ○ | `false` | **`true`가 아니면 근거를 찾은 질문이 전부 503입니다** |
+| `HCX_API_KEY` | ○ | — | HyperCLOVA X API 키 |
+| `SERVER_PORT` | | `8080` | 평가 규격은 80입니다. 앞단에서 돌리면 그대로 둬도 됩니다 |
+| `DB_POOL_SIZE` | | `10` | 커넥션 풀 크기 |
+| `LOG_LEVEL` | | `INFO` | `com.chaltteok` 로그 수준 |
+| `HCX_MODEL` | | `HCX-005` | 그 밖의 `HCX_*`는 `application.yml` 참고 |
+
+키는 파일에 적지 말고 환경변수로만 넘깁니다.
+
+### 실행
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=server \
+DB_URL=jdbc:postgresql://localhost:5432/chaltteok \
+DB_USERNAME=chaltteok \
+DB_PASSWORD=... \
+HCX_ENABLED=true \
+HCX_API_KEY=... \
+./gradlew bootRun
+```
+
+배포할 때는 jar로 띄웁니다.
+
+```bash
+./gradlew bootJar
+java -jar build/libs/*.jar        # 환경변수는 위와 같습니다
+```
+
+### 뜬 뒤 확인
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/actuator/health
+# 200
+
+curl -s 'http://localhost:8080/answer?question_id=Q1&question=삼성전자의%202030년%20예상%20주가는?'
+# 200, 5개 필드. 근거가 없는 질문이라 answer는 "확인할 수 없습니다"
+
+curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:8080/answer?question_id=Q1'
+# 400 (question 누락)
+```
+
+근거를 찾은 질문이 **503**이면 `HCX_ENABLED`나 `HCX_API_KEY`가 빠진 것입니다.
+
+## 데이터를 처음부터 다시 만들기
+
+DB가 빈 서버에서는 전처리 → 적재를 먼저 해야 합니다. 코퍼스 4,204건 기준 전처리 35초, 적재 1분 30초 걸립니다.
+
+```bash
+# 1) 전처리 — 4개 공시 유형 전부
+cd preprocess
+python -m pip install -r requirements.txt
+python -m pip install -e .
+python -m chaltteok_etl --corpus ../../corpus --out ../../work/preprocess-all.jsonl
+
+# 2) 적재 — 웹 서버로 뜨지 않고 적재만 하고 끝납니다
+cd ../backend
+SPRING_PROFILES_ACTIVE=server,load \
+DB_URL=... DB_USERNAME=... DB_PASSWORD=... \
+./gradlew bootRun --args='--chaltteok.load.path=/절대/경로/work/preprocess-all.jsonl'
+```
+
+`work/`는 저장소 밖입니다. 산출물(JSONL 43MB)은 커밋하지 않습니다.
+
+### 건수 (2026-09-05 기준)
+
+| 공시 유형 | manifest | 적재 | 비고 |
+| --- | ---: | ---: | --- |
+| 거래소공시 | 1,469 | **1,469** | |
+| 지분공시 | 1,083 | **1,083** | |
+| 정기공시 | 1,054 | **1,048** | 3건 실패, 3건 값 없음 |
+| 주요사항보고서 | 598 | **172** | 파서가 없는 서식 429건은 건너뜁니다 |
+| 합계 | 4,204 | **3,772** | 근거 35,674 · 사실 55,799 · 관계 298 |
+
+**전처리는 실패가 한 건이라도 있으면 종료 코드 1입니다**(`docs/data-model.md` §9).
+현재 3건이 실패하므로 정상 실행에서도 1이 나옵니다. 산출물은 그대로 쓸 수 있습니다.
+
 ## 전처리 결과 JSONL 적재
 
 Python 전처리가 만든 `PreprocessResult` JSONL을 PostgreSQL에 적재합니다.

@@ -79,4 +79,25 @@ class ExchangeQuestionParserTest {
         assertThat(parsed.topic()).isNull();
         assertThat(parsed.isIdentified()).isFalse();
     }
+
+    @Test
+    void readsIsoAndDottedReportDatesAsTheKoreanOne() {
+        // 한글만 읽던 때에는 ISO 표기에서 날짜를 못 읽고 그 기업의 다른 공시를 답했다.
+        for (String written : new String[]{"2025년 7월 28일", "2025-07-28", "2025.07.28"}) {
+            ExchangeQuestion parsed =
+                    parse("삼성전자가 " + written + " 공시한 공급계약의 계약금액은 얼마인가?");
+
+            assertThat(parsed.reportDate()).isEqualTo(LocalDate.of(2025, 7, 28));
+            // 연도도 같이 정해져야 문서를 좁히는 범위가 표기마다 달라지지 않는다.
+            assertThat(parsed.year()).isEqualTo(2025);
+        }
+    }
+
+    @Test
+    void keepsTheYearWhenOnlyAYearIsGiven() {
+        ExchangeQuestion parsed = parse("삼성전자의 2025년 공급계약 중 가장 큰 계약금액은?");
+
+        assertThat(parsed.reportDate()).isNull();
+        assertThat(parsed.year()).isEqualTo(2025);
+    }
 }

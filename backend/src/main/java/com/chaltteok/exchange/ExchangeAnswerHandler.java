@@ -108,6 +108,7 @@ public class ExchangeAnswerHandler implements AnswerHandler {
         if (DisclosureTypeMarkers.mentionsAnyOf(question,
                 DisclosureTypeMarkers.FUNDRAISING,
                 DisclosureTypeMarkers.TREASURY,
+                DisclosureTypeMarkers.BOND,
                 DisclosureTypeMarkers.OWNERSHIP)) {
             return false;
         }

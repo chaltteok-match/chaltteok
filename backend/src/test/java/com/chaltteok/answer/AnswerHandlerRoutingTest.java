@@ -3,6 +3,7 @@ package com.chaltteok.answer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.lenient;
 
+import com.chaltteok.bond.BondIssuanceAnswerHandler;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
@@ -25,7 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 
 /**
- * Handler 다섯을 한 자리에 올려놓고 질문이 제 유형으로 가는지 본다.
+ * Handler 여섯을 한 자리에 올려놓고 질문이 제 유형으로 가는지 본다.
  *
  * <p>{@link AnswerHandlerSelector}는 {@code supports()}가 처음 참인 것을 집으므로, 질문이 유형
  * 두 개를 가리키면 더 구체적인 쪽이 아니라 {@code @Order}가 앞선 쪽이 가져간다. 라우팅이
@@ -48,6 +49,8 @@ class AnswerHandlerRoutingTest {
             new CorpIdentity("한화에어로스페이스", "한화에어로", "012450", "00164788");
     private static final CorpIdentity SK_HYNIX =
             new CorpIdentity("SK하이닉스", "SK하이닉스", "000660", "00164779");
+    private static final CorpIdentity ECOPRO_BM =
+            new CorpIdentity("에코프로비엠", "에코프로비엠", "247540", "01160363");
 
     @Mock
     private DisclosureDocumentRepository documentRepository;
@@ -78,6 +81,12 @@ class AnswerHandlerRoutingTest {
                         DocGroup.MAJOR, "자기주식취득결정"))
                 .thenReturn(List.of(SAMSUNG));
         lenient().when(corpIdentityRepository.findByDocGroupAndDocSubtype(
+                        DocGroup.MAJOR, "전환사채권발행결정"))
+                .thenReturn(List.of(ECOPRO_BM));
+        lenient().when(corpIdentityRepository.findByDocGroupAndDocSubtype(
+                        DocGroup.MAJOR, "교환사채권발행결정"))
+                .thenReturn(List.of(SK_HYNIX));
+        lenient().when(corpIdentityRepository.findByDocGroupAndDocSubtype(
                         DocGroup.HOLDING, "대량보유상황보고서"))
                 .thenReturn(List.of(SAMSUNG, HANWHA, SK_HYNIX));
 
@@ -89,6 +98,8 @@ class AnswerHandlerRoutingTest {
                 new ExchangeAnswerHandler(documentRepository, factRepository,
                         relationRepository, corpIdentityRepository),
                 new TreasuryStockAnswerHandler(
+                        documentRepository, factRepository, corpIdentityRepository),
+                new BondIssuanceAnswerHandler(
                         documentRepository, factRepository, corpIdentityRepository),
                 new FundraisingAnswerHandler(
                         documentRepository, factRepository, corpIdentityRepository)));
@@ -110,6 +121,8 @@ class AnswerHandlerRoutingTest {
                 .isEqualTo("FundraisingAnswerHandler");
         assertThat(routeOf("삼성전자 자기주식 취득 예정 주식 수는?"))
                 .isEqualTo("TreasuryStockAnswerHandler");
+        assertThat(routeOf("에코프로비엠 전환사채 권면총액은?"))
+                .isEqualTo("BondIssuanceAnswerHandler");
         assertThat(routeOf("SK하이닉스 대량보유상황보고서 지분율은?"))
                 .isEqualTo("OwnershipAnswerHandler");
         assertThat(routeOf("SK하이닉스 2024년 매출액은?")).isEqualTo("FinancialAnswerHandler");
@@ -124,6 +137,8 @@ class AnswerHandlerRoutingTest {
             FundraisingAnswerHandler     | 한화에어로스페이스 유상증자에서 시설자금은 얼마인가?
             FundraisingAnswerHandler     | 한화에어로스페이스 유상증자 신주 발행가액은?
             TreasuryStockAnswerHandler   | 삼성전자 자기주식 취득 예정 금액은?
+            BondIssuanceAnswerHandler    | 에코프로비엠 전환사채 권면총액은?
+            BondIssuanceAnswerHandler    | SK하이닉스 교환사채 교환가액은?
             OwnershipAnswerHandler       | 한화에어로스페이스 대량보유상황보고서의 보유 목적은?
             OwnershipAnswerHandler       | 삼성전자 지분공시 보고구분은?
             FinancialAnswerHandler       | 삼성전자 2024년 연결 매출액은?
@@ -139,6 +154,7 @@ class AnswerHandlerRoutingTest {
             FundraisingAnswerHandler | 한화에어로스페이스가 유상증자로 조달한 자금 중 시설투자에 쓰는 금액은?
             FundraisingAnswerHandler | 한화에어로스페이스 유상증자 시설투자 자금은?
             FundraisingAnswerHandler | 한화에어로스페이스 유상증자 투자금액은?
+            BondIssuanceAnswerHandler | 에코프로비엠 전환사채 투자금액은?
             OwnershipAnswerHandler   | 한화에어로스페이스 유상증자 참여 이후 대량보유 지분율은?
             OwnershipAnswerHandler   | 한화에어로스페이스 대량보유 보고자의 공급계약 관련 보유 목적은?
             """)

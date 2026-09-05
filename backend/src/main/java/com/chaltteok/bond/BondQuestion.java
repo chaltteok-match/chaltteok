@@ -9,6 +9,11 @@ package com.chaltteok.bond;
  * @param itemLabel 질문에 쓰인 항목 표현
  */
 record BondQuestion(String corpName, BondForm form, String factKey, String itemLabel) {
+    /** 공시를 낸 기업을 다른 후보로 바꾼 질문. 상대 기업이 질문에 함께 나올 때 쓴다. */
+    BondQuestion withCorpName(String other) {
+        return new BondQuestion(other, form, factKey, itemLabel);
+    }
+
 
     boolean asksForSpecificItem() {
         return factKey != null;

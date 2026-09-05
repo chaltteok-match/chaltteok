@@ -453,10 +453,29 @@ public class FundraisingAnswerHandler implements AnswerHandler {
     }
 
     private FundraisingQuestion parse(String question) {
-        return FundraisingQuestionParser.parse(
-                question,
-                CorpNameResolver.of(corpIdentityRepository.findByDocGroupAndDocSubtype(
-                        DocGroup.MAJOR, DOC_SUBTYPE)));
+        CorpNameResolver corpNames = CorpNameResolver.of(
+                corpIdentityRepository.findByDocGroupAndDocSubtype(DocGroup.MAJOR, DOC_SUBTYPE));
+        return filingCorpOf(FundraisingQuestionParser.parse(question, corpNames), question, corpNames);
+    }
+
+    /**
+     * 상대 기업이 질문에 함께 나오면, <b>그날 이 서식을 낸 쪽</b>을 공시 기업으로 삼는다.
+     *
+     * <p>표기가 긴 쪽을 고르는 기본 규칙으로는 상대 기업이 이긴다. 하이브 지분을 미래에셋증권이
+     * 보유한 공시를 물으면 미래에셋증권 공시를 뒤지고 「없습니다」가 나갔다.
+     *
+     * <p>공시일이 없으면 좁힐 근거가 없어 그대로 둔다. 후보가 하나뿐일 때도 그대로다.
+     */
+    private FundraisingQuestion filingCorpOf(
+            FundraisingQuestion parsed, String question, CorpNameResolver corpNames) {
+        LocalDate reportDate = QuestionReportDate.parse(question);
+        if (reportDate == null || parsed.corpName() == null) {
+            return parsed;
+        }
+        String filed = corpNames.resolve(question, corp -> !documentRepository
+                .findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                        corp, DocGroup.MAJOR, DOC_SUBTYPE, reportDate).isEmpty());
+        return filed == null || filed.equals(parsed.corpName()) ? parsed : parsed.withCorpName(filed);
     }
 
     /**

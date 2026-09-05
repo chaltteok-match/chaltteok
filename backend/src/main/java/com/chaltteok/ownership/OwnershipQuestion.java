@@ -9,6 +9,11 @@ package com.chaltteok.ownership;
  * @param history   바뀐 과정을 묻는지. {@code 정정한}만으로는 거짓
  */
 record OwnershipQuestion(String corpName, String factKey, String itemLabel, boolean history) {
+    /** 공시를 낸 기업을 다른 후보로 바꾼 질문. 상대 기업이 질문에 함께 나올 때 쓴다. */
+    OwnershipQuestion withCorpName(String other) {
+        return new OwnershipQuestion(other, factKey, itemLabel, history);
+    }
+
 
     boolean asksForSpecificItem() {
         return factKey != null;

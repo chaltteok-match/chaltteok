@@ -20,6 +20,11 @@ record FundraisingQuestion(
         Set<String> excludedFactKeys,
         boolean history
 ) {
+    /** 공시를 낸 기업을 다른 후보로 바꾼 질문. 상대 기업이 질문에 함께 나올 때 쓴다. */
+    FundraisingQuestion withCorpName(String other) {
+        return new FundraisingQuestion(other, factKey, itemLabel, excludedFactKeys, history);
+    }
+
 
     FundraisingQuestion {
         excludedFactKeys = excludedFactKeys == null || excludedFactKeys.isEmpty()

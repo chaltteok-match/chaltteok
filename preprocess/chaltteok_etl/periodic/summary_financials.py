@@ -71,6 +71,7 @@ RE_SCOPE_MARKER = re.compile(
 )
 # 기준을 밝히지 않은 소제목: '나. 요약 재무정보', '나. 재무제표에 관한 사항'
 # 앞 소제목이 '가. 요약 연결 재무정보'였다고 해서 이 표까지 연결로 볼 수 없다.
+# 연결 바로 뒤에 오면 별도로 읽는다(_infer_separate_after_consolidated). 그 밖에는 unknown이다.
 RE_SUMMARY_HEADING = re.compile(
     r"요약\s*재무\s*(?:정보|제표)"
     r"|" + _RUN_START + _NUMBERING + r"재무\s*제표"
@@ -302,9 +303,12 @@ def _heading_text(section: str, position: int, fallback: str) -> str:
 def _scope_spans(section: str) -> list[tuple[int, Scope, str]]:
     """섹션 안의 요약재무정보 소제목 위치를 모은다.
 
-    기준을 밝힌 소제목('가. 요약연결재무정보')은 그 기준으로, 밝히지 않은 소제목
-    ('나. 요약 재무정보')은 ``unknown``으로 둔다. 밝히지 않은 소제목을 건너뛰면
-    앞 소제목의 기준이 그대로 물려져 별도 표가 연결로 기록된다.
+    기준을 밝힌 소제목('가. 요약연결재무정보')은 그 기준으로 둔다. 밝히지 않은 소제목
+    ('나. 요약 재무정보')은 건너뛰지 않고 자리를 남긴다. 건너뛰면 앞 소제목의 기준이
+    그대로 물려져 별도 표가 연결로 기록된다.
+
+    자리를 남긴 뒤 :func:`_infer_separate_after_consolidated`가 연결 바로 뒤에 오는
+    것만 별도로 바꾼다. 그 밖에는 ``unknown``으로 남는다.
     """
     spans: list[tuple[int, Scope, str]] = []
     covered: list[tuple[int, int]] = []
@@ -323,7 +327,31 @@ def _scope_spans(section: str) -> list[tuple[int, Scope, str]]:
         )
 
     spans.sort(key=lambda span: span[0])
-    return spans
+    return _infer_separate_after_consolidated(spans)
+
+
+def _infer_separate_after_consolidated(
+    spans: list[tuple[int, Scope, str]],
+) -> list[tuple[int, Scope, str]]:
+    """연결 소제목 뒤에 오는 기준 없는 소제목을 별도로 본다.
+
+    ``가. 요약연결재무정보`` / ``나. 요약재무정보``는 DART 사업보고서가 쓰는 짝이다.
+    뒤쪽 소제목에 '별도'라는 말이 없을 뿐 별도 표다. 이 규칙을 넣기 전에는 카카오·대우건설·
+    하나금융지주처럼 이 짝을 쓰는 문서의 별도 수치가 통째로 ``unknown``으로 남았다.
+
+    앞에 연결 소제목이 없으면 그대로 ``unknown``으로 둔다. 연결을 만들지 않는 회사의
+    ``요약재무정보``까지 별도로 단정하지 않는다. 바로 앞이 별도였으면 그것도 건드리지
+    않는다. 짝이 아니라 표가 셋 이상인 문서라 근거가 약하다.
+    """
+    resolved: list[tuple[int, Scope, str]] = []
+    previous = Scope.UNKNOWN
+    for start, scope, heading in spans:
+        if scope is Scope.UNKNOWN and previous is Scope.CONSOLIDATED:
+            scope = Scope.SEPARATE
+        if scope is not Scope.UNKNOWN:
+            previous = scope
+        resolved.append((start, scope, heading))
+    return resolved
 
 
 def _scope_for(spans, position: int) -> tuple[Scope, str | None]:

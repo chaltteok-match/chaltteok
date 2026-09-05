@@ -310,6 +310,131 @@ public class ExchangeAnswerHandler implements AnswerHandler {
     }
 
     /**
+     * 사실이 없는 서식을 원문 chunk로 답한다.
+     *
+     * <p>투자판단관련주요경영사항은 자유 서술이라 뽑아 둔 값이 없다. 금액 문자열이 있는
+     * 79건도 {@code 5.9조원(보조금 0.7조원 포함)}처럼 단서가 붙어, 숫자만 떼어내면 틀린 값이
+     * 된다. 그래서 여기서는 값을 고르거나 계산하지 않고 문서를 한 건으로 좁히는 것까지만 한다.
+     *
+     * <p>공시일을 지정했는데도 여러 건이면 고르지 않는다. 같은 날 서로 다른 사건을 여러 건
+     * 공시하는 기업이 있다(셀트리온 2025-02-24에 3건). 어느 것을 묻는지 모르는 채 하나를
+     * 고르면 다른 사건을 답하게 된다. 대신 후보의 제목을 근거로 남겨 되물을 수 있게 한다.
+     */
+    private AnswerHandlerResult withoutFacts(ExchangeQuestion parsed, String formName) {
+        String summaryPrefix = "%s·%s 식별".formatted(parsed.corpName(), formName);
+        List<DisclosureDocumentEntity> documents =
+                withoutSuperseded(selectDocuments(parsed, formName));
+        if (documents.isEmpty()) {
+            // 그날 접수된 정정본들이 서로 다른 원공시를 고친 경우다. 문서가 있는데도
+            // '없습니다'라고 답하면 안 된다. 어느 건을 묻는지 모른다고 밝힌다.
+            List<DisclosureDocumentEntity> filedThatDay = filedOn(parsed, formName);
+            if (filedThatDay.size() > 1) {
+                return tooManyOnOneDay(parsed, filedThatDay, formName,
+                        summaryPrefix + " → 공시 %d건".formatted(filedThatDay.size()));
+            }
+            return AnswerHandlerResult.unavailable(
+                    summaryPrefix + " → 조건에 맞는 거래소공시를 찾지 못함",
+                    "제공된 공시 데이터에 %s의 %s%s가 없습니다".formatted(
+                            parsed.corpName(), periodText(parsed), formName));
+        }
+
+        String searchSummary = summaryPrefix + " → 공시 %d건".formatted(documents.size());
+        if (documents.size() > 1 && parsed.reportDate() != null) {
+            return tooManyOnOneDay(parsed, documents, formName, searchSummary);
+        }
+
+        DisclosureDocumentEntity chosen = documents.stream()
+                .max(Comparator
+                        .comparing(DisclosureDocumentEntity::getRceptDt)
+                        .thenComparing(DisclosureDocumentEntity::getRceptNo))
+                .orElseThrow();
+        List<EvidenceChunkEntity> chunks =
+                chunkRepository.findByDocumentDocIdOrderBySequenceAsc(chosen.getDocId());
+        if (chunks.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " → 원문을 찾지 못함",
+                    "찾은 %s 공시의 원문을 확인할 수 없습니다".formatted(formName));
+        }
+
+        StringBuilder summary = new StringBuilder(searchSummary);
+        if (documents.size() > 1) {
+            summary.append(" 중 최신 공시 사용");
+        }
+        summary.append(" → '%s'(%s)".formatted(chosen.getReportNm(), chosen.getRceptDt()));
+        titleOf(chunks).ifPresent(title -> summary.append(", 제목 %s".formatted(title)));
+        summary.append("의 원문 %d개 항목 제공".formatted(chunks.size()));
+        return AnswerHandlerResult.of(evidencesOf(chosen, chunks), summary.toString());
+    }
+
+    /** 공시일을 지정했는데도 여러 건이면 제목만 근거로 남기고 답하지 않는다. */
+    private AnswerHandlerResult tooManyOnOneDay(
+            ExchangeQuestion parsed,
+            List<DisclosureDocumentEntity> documents,
+            String formName,
+            String searchSummary) {
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        List<String> titles = new ArrayList<>();
+        for (DisclosureDocumentEntity document : documents) {
+            List<EvidenceChunkEntity> chunks =
+                    chunkRepository.findByDocumentDocIdOrderBySequenceAsc(document.getDocId());
+            titleOf(chunks).ifPresent(titles::add);
+            chunks.stream()
+                    .filter(chunk -> JUDGEMENT_TITLE_LABEL.equals(chunk.getRowLabel()))
+                    .findFirst()
+                    .map(chunk -> evidenceOf(document, chunk))
+                    .filter(evidence -> !evidences.contains(evidence))
+                    .ifPresent(evidences::add);
+        }
+        return AnswerHandlerResult.unavailable(
+                evidences,
+                searchSummary + " → %s 공시가 여러 건이라 한 건으로 좁히지 못함: %s".formatted(
+                        parsed.reportDate(), String.join(" / ", titles)),
+                "%s%s %s에 공시한 %s%s %d건이라 어느 건을 묻는지 특정할 수 없습니다".formatted(
+                        parsed.corpName(), KoreanParticle.subject(parsed.corpName()),
+                        parsed.reportDate(), formName, KoreanParticle.subject(formName),
+                        documents.size()));
+    }
+
+    /** 질문이 지정한 날에 접수된 문서. 정정본을 원공시일로 옮기기 전 상태다. */
+    private List<DisclosureDocumentEntity> filedOn(ExchangeQuestion parsed, String formName) {
+        if (parsed.reportDate() == null) {
+            return List.of();
+        }
+        return formDocuments(parsed, formName).stream()
+                .filter(document -> parsed.reportDate().equals(document.getRceptDt()))
+                .toList();
+    }
+
+    /** 투자판단 공시의 제목. 300건 전부에 있지만 없을 때를 대비해 Optional로 둔다. */
+    private static Optional<String> titleOf(List<EvidenceChunkEntity> chunks) {
+        return chunks.stream()
+                .filter(chunk -> JUDGEMENT_TITLE_LABEL.equals(chunk.getRowLabel()))
+                .map(EvidenceChunkEntity::getText)
+                .findFirst();
+    }
+
+    private static List<RetrievedEvidence> evidencesOf(
+            DisclosureDocumentEntity document, List<EvidenceChunkEntity> chunks) {
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        for (EvidenceChunkEntity chunk : chunks) {
+            RetrievedEvidence evidence = evidenceOf(document, chunk);
+            if (!evidences.contains(evidence)) {
+                evidences.add(evidence);
+            }
+        }
+        return evidences;
+    }
+
+    private static RetrievedEvidence evidenceOf(
+            DisclosureDocumentEntity document, EvidenceChunkEntity chunk) {
+        return new RetrievedEvidence(
+                document.getReportNm(),
+                document.getRceptDt(),
+                document.getCorpName(),
+                chunk.getText());
+    }
+
+    /**
      * 값이 언제 얼마에서 얼마로 바뀌었는지 답한다.
      *
      * <p>정정 사슬은 전처리가 만든 관계를 따라간다. 사건 키는 사슬의 맨 처음 원본이라,
@@ -444,6 +569,17 @@ public class ExchangeAnswerHandler implements AnswerHandler {
             }
         }
         return parsed;
+    }
+
+    /** 기업·서식·연도까지만 좁힌 문서. 공시일로 좁히기 전 후보다. */
+    private List<DisclosureDocumentEntity> formDocuments(
+            ExchangeQuestion parsed, String formName) {
+        return documentRepository.findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(
+                        parsed.corpName(), DocGroup.EXCHANGE).stream()
+                .filter(document -> matchesForm(document, formName))
+                .filter(document -> parsed.year() == null
+                        || document.getRceptDt().getYear() == parsed.year())
+                .toList();
     }
 
     /** 기업·서식·연도까지만 좁힌 문서. 공시일로 좁히기 전 후보다. */

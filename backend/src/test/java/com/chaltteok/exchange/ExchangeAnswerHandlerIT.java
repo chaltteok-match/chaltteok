@@ -145,6 +145,23 @@ class ExchangeAnswerHandlerIT {
     }
 
     @Test
+    void answersTheSameForIsoAndDottedDisclosureDates() {
+        // 한글만 읽던 때에는 ISO 표기에서 날짜를 못 읽고 그 기업의 다른 공시를 답했다.
+        // 답변 불가가 아니라 틀린 금액이 나갔다.
+        AnswerHandlerResult korean =
+                answer("삼성전자가 2025년 7월 28일 공시한 공급계약의 계약금액은 얼마인가?");
+
+        for (String written : new String[]{"2025-07-28", "2025.07.28"}) {
+            AnswerHandlerResult result =
+                    answer("삼성전자가 " + written + " 공시한 공급계약의 계약금액은 얼마인가?");
+
+            assertThat(result.isAnswerable()).isTrue();
+            assertThat(result.evidences()).isEqualTo(korean.evidences());
+            assertThat(result.processSummary()).isEqualTo(korean.processSummary());
+        }
+    }
+
+    @Test
     void answersContractAmountForTheGivenDisclosureDate() {
         AnswerHandlerResult result =
                 answer("삼성전자가 2025년 7월 28일 공시한 공급계약의 계약금액은 얼마인가?");

@@ -486,7 +486,8 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.processSummary())
                 .contains("제외")
                 .contains("700,020,800,000원")
-                .doesNotContain("1,600,000,000,000원");
+                .doesNotContain("1,600,000,000,000원")
+                .doesNotContain("자금 사용 목적 합계");
     }
 
     @Test
@@ -518,7 +519,8 @@ class FundraisingAnswerHandlerTest {
         assertThat(result.processSummary())
                 .contains("제외")
                 .contains("700,020,800,000원")
-                .doesNotContain("1,600,000,000,000원");
+                .doesNotContain("1,600,000,000,000원")
+                .doesNotContain("자금 사용 목적 합계");
     }
 
     @Test

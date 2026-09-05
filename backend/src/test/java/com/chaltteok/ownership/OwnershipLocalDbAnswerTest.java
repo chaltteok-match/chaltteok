@@ -91,4 +91,39 @@ class OwnershipLocalDbAnswerTest {
         assertThat(result.isAnswerable()).isTrue();
         assertThat(result.evidences().get(0).evidenceText()).contains("20.74");
     }
+
+    @Test
+    void doesNotAnswerMissingYearAsAnotherFiling() {
+        List<String> corps = entityManager.createQuery(
+                        """
+                        select distinct d.corpName from DisclosureDocumentEntity d
+                        where d.docGroup = :docGroup and d.docSubtype = :subtype
+                        order by d.corpName
+                        """,
+                        String.class)
+                .setParameter("docGroup", DocGroup.HOLDING)
+                .setParameter("subtype", OwnershipAnswerHandler.DOC_SUBTYPE)
+                .getResultList();
+        assertThat(corps).isNotEmpty();
+
+        int withoutDate = 0;
+        int missingYear = 0;
+        for (String corp : corps) {
+            String noDate = corp + " 대량보유상황보고서의 지분율은?";
+            if (handler.supports(noDate)
+                    && handler.handle("Q-LOCAL-NODATE", noDate).isAnswerable()) {
+                withoutDate++;
+                System.out.println("  날짜 없이 답: " + corp);
+            }
+            String missingYearQuestion = corp + "의 2099년 대량보유상황보고서의 지분율은?";
+            if (handler.supports(missingYearQuestion)
+                    && handler.handle("Q-LOCAL-2099", missingYearQuestion).isAnswerable()) {
+                missingYear++;
+            }
+        }
+        System.out.printf(
+                "대량보유 기업 %d: 날짜 없이 답 %d, 2099년으로 답 %d%n",
+                corps.size(), withoutDate, missingYear);
+        assertThat(missingYear).isZero();
+    }
 }

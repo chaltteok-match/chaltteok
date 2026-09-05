@@ -262,4 +262,18 @@ class FundraisingAnswerIT {
                 .andExpect(jsonPath("$.think_trace").value(containsString("major_20250408000012")))
                 .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2025-04-08")));
     }
+
+    @Test
+    void answersWhenReportDateIsOmittedAndOnlyOneFilingExists() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult(HCX_ANSWER, "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-FUND-NODATE")
+                        .param("question", "한화에어로스페이스 유상증자결정의 타법인 증권취득 목적 자금은 얼마인가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("1,600,000,000,000")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일 없이 단건")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("major_20250408000012")));
+    }
 }

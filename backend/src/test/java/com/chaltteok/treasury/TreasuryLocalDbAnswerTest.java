@@ -80,4 +80,37 @@ class TreasuryLocalDbAnswerTest {
                 pairs.size(), answerable, unavailable);
         assertThat(answerable).isGreaterThan(0);
     }
+
+    @Test
+    void doesNotAnswerMissingYearAsAnotherFiling() {
+        List<String> corps = entityManager.createQuery(
+                        """
+                        select distinct d.corpName from DisclosureDocumentEntity d
+                        where d.docGroup = :docGroup and d.docSubtype = :subtype
+                        order by d.corpName
+                        """,
+                        String.class)
+                .setParameter("docGroup", DocGroup.MAJOR)
+                .setParameter("subtype", TreasuryStockAnswerHandler.DOC_SUBTYPE)
+                .getResultList();
+        assertThat(corps).isNotEmpty();
+
+        int withoutDate = 0;
+        int missingYear = 0;
+        for (String corp : corps) {
+            if (handler.handle("Q-LOCAL-NODATE", corp + "의 자기주식 취득 예정 금액은?").isAnswerable()) {
+                withoutDate++;
+                System.out.println("  날짜 없이 답: " + corp);
+            }
+            AnswerHandlerResult missing = handler.handle(
+                    "Q-LOCAL-2099", corp + "의 2099년 자기주식 취득 예정 금액은?");
+            if (missing.isAnswerable()) {
+                missingYear++;
+            }
+        }
+        System.out.printf(
+                "자기주식취득결정 기업 %d: 날짜 없이 답 %d, 2099년으로 답 %d%n",
+                corps.size(), withoutDate, missingYear);
+        assertThat(missingYear).isZero();
+    }
 }

@@ -2,7 +2,10 @@ package com.chaltteok.treasury;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.chaltteok.answer.AnswerHandlerResult;
@@ -132,10 +135,78 @@ class TreasuryStockAnswerHandlerTest {
     }
 
     @Test
-    void requiresReportDate() {
+    void requiresReportDateWhenSeveralFilingsExist() {
+        DisclosureDocumentEntity first = document("major_20250301000001", false);
+        DisclosureDocumentEntity second = document("major_20250401000001", LocalDate.of(2025, 4, 1), false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.MAJOR, "자기주식취득결정"))
+                .thenReturn(List.of(first, second));
+
         AnswerHandlerResult result = handler.handle("Q-TS", "삼성전자 자기주식취득결정의 취득예정금액은?");
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("공시일");
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any());
+    }
+
+    @Test
+    void answersWhenOnlyOneFilingExistsWithoutReportDate() {
+        DisclosureDocumentEntity document = document();
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.MAJOR, "자기주식취득결정"))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20250301000001"))
+                .thenReturn(List.of(
+                        fact(document, TreasuryQuestionParser.AMOUNT_FACT_KEY, "취득예정금액",
+                                "50,000,000,000", "50000000000", "KRW", "원")
+                ));
+
+        AnswerHandlerResult result = handler.handle("Q-TS", "삼성전자 자기주식취득결정의 취득예정금액은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary()).contains("공시일 없이 단건");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("50,000,000,000");
+    }
+
+    @Test
+    void answersYearOnlyWhenThatYearHasASingleFiling() {
+        DisclosureDocumentEntity older = document("major_20230930000001", LocalDate.of(2023, 9, 30), false);
+        DisclosureDocumentEntity matching = document();
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.MAJOR, "자기주식취득결정"))
+                .thenReturn(List.of(older, matching));
+        when(factRepository.findByDocumentDocId("major_20250301000001"))
+                .thenReturn(List.of(
+                        fact(matching, TreasuryQuestionParser.AMOUNT_FACT_KEY, "취득예정금액",
+                                "50,000,000,000", "50000000000", "KRW", "원")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-TS",
+                "삼성전자의 2025년 자기주식 취득 예정 금액은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("연도=2025")
+                .contains("major_20250301000001");
+        assertThat(result.evidences().getFirst().reportDate()).isEqualTo(REPORT_DATE);
+        verify(factRepository, never()).findByDocumentDocId("major_20230930000001");
+    }
+
+    @Test
+    void returnsUnavailableWhenAskedYearHasNoFiling() {
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.MAJOR, "자기주식취득결정"))
+                .thenReturn(List.of(document()));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-TS",
+                "삼성전자의 2099년 자기주식 취득 예정 금액은?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("2099년");
+        assertThat(result.evidences()).isEmpty();
+        verify(factRepository, never()).findByDocumentDocId(anyString());
     }
 
     @Test
@@ -162,12 +233,16 @@ class TreasuryStockAnswerHandlerTest {
     }
 
     private static DisclosureDocumentEntity document(String docId, boolean correction) {
+        return document(docId, REPORT_DATE, correction);
+    }
+
+    private static DisclosureDocumentEntity document(String docId, LocalDate date, boolean correction) {
         DisclosureDocumentEntity entity = new DisclosureDocumentEntity();
         entity.setDocId(docId);
         entity.setCorpName("삼성전자");
         entity.setReportNm("주요사항보고서(자기주식취득결정)");
         entity.setRceptNo(docId.substring("major_".length()));
-        entity.setRceptDt(REPORT_DATE);
+        entity.setRceptDt(date);
         entity.setDocGroup(DocGroup.MAJOR);
         entity.setDocSubtype("자기주식취득결정");
         entity.setCorrection(correction);

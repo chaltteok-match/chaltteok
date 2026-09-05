@@ -106,10 +106,76 @@ class OwnershipAnswerHandlerTest {
     }
 
     @Test
-    void requiresReportDate() {
+    void requiresReportDateWhenSeveralFilingsExist() {
+        DisclosureDocumentEntity first = document("holding_20250115000001", false);
+        DisclosureDocumentEntity second = document("holding_20250310000001", LocalDate.of(2025, 3, 10), false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(first, second));
+
         AnswerHandlerResult result = handler.handle("Q-OWN", "삼성전자 대량보유상황보고서의 지분율은?");
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("공시일");
+        verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                any(), any(), any(), any());
+    }
+
+    @Test
+    void answersWhenOnlyOneFilingExistsWithoutReportDate() {
+        DisclosureDocumentEntity document = document("holding_20250115000001", false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(List.of(
+                        fact(document, "ownership_ratio", "보유비율 (%)", "8.25", "8.25", "%")
+                ));
+
+        AnswerHandlerResult result = handler.handle("Q-OWN", "삼성전자 대량보유상황보고서의 지분율은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary()).contains("공시일 없이 단건");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("8.25");
+    }
+
+    @Test
+    void answersYearOnlyWhenThatYearHasASingleFiling() {
+        DisclosureDocumentEntity older = document("holding_20241201000001", LocalDate.of(2024, 12, 1), false);
+        DisclosureDocumentEntity matching = document("holding_20250115000001", false);
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(older, matching));
+        when(factRepository.findByDocumentDocId("holding_20250115000001"))
+                .thenReturn(List.of(
+                        fact(matching, "ownership_ratio", "보유비율 (%)", "8.25", "8.25", "%")
+                ));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자가 2025년 대량보유상황보고서의 지분율은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary())
+                .contains("연도=2025")
+                .contains("holding_20250115000001");
+        assertThat(result.evidences().getFirst().reportDate()).isEqualTo(REPORT_DATE);
+        verify(factRepository, never()).findByDocumentDocId("holding_20241201000001");
+    }
+
+    @Test
+    void returnsUnavailableWhenAskedYearHasNoFiling() {
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
+                .thenReturn(List.of(document("holding_20250115000001", false)));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-OWN",
+                "삼성전자의 2099년 대량보유상황보고서의 지분율은?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("2099년");
+        assertThat(result.evidences()).isEmpty();
+        verify(factRepository, never()).findByDocumentDocId(anyString());
     }
 
     @Test

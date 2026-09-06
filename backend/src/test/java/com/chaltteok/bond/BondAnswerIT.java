@@ -93,4 +93,32 @@ class BondAnswerIT {
                 .andExpect(jsonPath("$.think_trace").value(containsString("bond_face_amount")))
                 .andExpect(jsonPath("$.answer").value(containsString("4,400억")));
     }
+
+    @Test
+    void answersTheSameQuestionWrittenWithAnIsoDate() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("권면총액은 4,400억원입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-CB-002")
+                        .param("question", "에코프로비엠이 2023-06-30 공시한 전환사채의 권면총액은 얼마인가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("440,000,000,000")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일=2023-06-30")))
+                .andExpect(jsonPath("$.answer").value(containsString("4,400억")));
+    }
+
+    @Test
+    void answersWithoutADateWhenTheCompanyFiledOnce() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class)))
+                .thenReturn(new HcxResult("권면총액은 4,400억원입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-CB-003")
+                        .param("question", "에코프로비엠의 전환사채 권면총액은 얼마인가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("440,000,000,000")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("공시일 없이 단건 검색")))
+                .andExpect(jsonPath("$.answer").value(containsString("4,400억")));
+    }
 }

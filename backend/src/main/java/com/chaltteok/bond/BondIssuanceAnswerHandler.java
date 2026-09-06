@@ -5,14 +5,15 @@ import com.chaltteok.answer.AnswerHandlerResult;
 import com.chaltteok.answer.CorpIdentity;
 import com.chaltteok.answer.CorpNameResolver;
 import com.chaltteok.answer.KoreanAmountFormatter;
+import com.chaltteok.answer.QuestionReportDate;
 import com.chaltteok.answer.RetrievedEvidence;
+import com.chaltteok.answer.SingleReportDateDocuments;
 import com.chaltteok.disclosure.model.enums.DocGroup;
 import com.chaltteok.disclosure.persistence.entity.DisclosureDocumentEntity;
 import com.chaltteok.disclosure.persistence.entity.ExtractedFactEntity;
 import com.chaltteok.disclosure.persistence.repository.CorpIdentityRepository;
 import com.chaltteok.disclosure.persistence.repository.DisclosureDocumentRepository;
 import com.chaltteok.disclosure.persistence.repository.ExtractedFactRepository;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,8 +21,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
@@ -45,10 +44,6 @@ public class BondIssuanceAnswerHandler implements AnswerHandler {
             BondQuestionParser.FACE_AMOUNT_FACT_KEY,
             BondQuestionParser.EXERCISE_PRICE_FACT_KEY
     );
-    private static final Pattern KOREAN_REPORT_DATE = Pattern.compile(
-            "(\\d{4})년\\s*(\\d{1,2})월\\s*(\\d{1,2})일"
-    );
-
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
     private final CorpIdentityRepository corpIdentityRepository;
@@ -86,28 +81,57 @@ public class BondIssuanceAnswerHandler implements AnswerHandler {
                     "질문에서 전환사채와 교환사채를 구분하지 못했습니다"
             );
         }
-        LocalDate reportDate = resolveReportDate(question);
-        if (reportDate == null) {
-            return AnswerHandlerResult.unavailable(
-                    "기업명=" + parsed.corpName() + ", 공시유형=major, 서식=" + parsed.form().docSubtype() + " 검색",
-                    "질문에서 공시일(yyyy년 M월 d일)을 읽지 못해 사채 발행 공시를 특정하지 못했습니다"
-            );
-        }
+        LocalDate reportDate = QuestionReportDate.parse(question);
         String searchSummary = "기업명=" + parsed.corpName()
-                + ", 공시유형=major, 서식=" + parsed.form().docSubtype()
-                + ", 공시일=" + reportDate + " 검색";
-        List<DisclosureDocumentEntity> documents =
-                documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
-                        parsed.corpName(),
-                        DocGroup.MAJOR,
-                        parsed.form().docSubtype(),
-                        reportDate
-                );
-        if (documents.isEmpty()) {
-            return AnswerHandlerResult.unavailable(
-                    searchSummary,
-                    "해당 기업의 " + reportDate + " " + parsed.form().docSubtype() + " 공시를 찾지 못했습니다"
+                + ", 공시유형=major, 서식=" + parsed.form().docSubtype();
+        List<DisclosureDocumentEntity> documents;
+        if (reportDate != null) {
+            searchSummary += ", 공시일=" + reportDate + " 검색";
+            documents = documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                    parsed.corpName(),
+                    DocGroup.MAJOR,
+                    parsed.form().docSubtype(),
+                    reportDate
             );
+            if (documents.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary,
+                        "해당 기업의 " + reportDate + " " + parsed.form().docSubtype() + " 공시를 찾지 못했습니다"
+                );
+            }
+        } else if (QuestionReportDate.mentionsDate(question)) {
+            return AnswerHandlerResult.unavailable(
+                    searchSummary + " 검색",
+                    "질문에서 공시일을 읽지 못해 사채 발행 공시를 특정하지 못했습니다"
+            );
+        } else {
+            List<DisclosureDocumentEntity> all =
+                    documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                            parsed.corpName(), DocGroup.MAJOR, parsed.form().docSubtype());
+            if (all.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary + " 검색",
+                        "해당 기업의 " + parsed.form().docSubtype() + " 공시를 찾지 못했습니다"
+                );
+            }
+            Integer year = QuestionReportDate.parseYear(question);
+            searchSummary += year == null
+                    ? ", 공시일 없이 단건 검색"
+                    : ", 연도=" + year + " 단건 검색";
+            List<DisclosureDocumentEntity> scoped = SingleReportDateDocuments.inYear(all, year);
+            if (scoped.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary,
+                        "해당 기업의 " + year + "년 " + parsed.form().docSubtype() + " 공시를 찾지 못했습니다"
+                );
+            }
+            documents = SingleReportDateDocuments.uniqueDay(scoped);
+            if (documents.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary + " → 공시일 " + scoped.size() + "건",
+                        "여러 차례 사채 발행결정이 있어 공시일을 특정하지 못했습니다"
+                );
+            }
         }
         List<Candidate> candidates = candidatesOf(preferCorrections(documents), parsed);
         if (candidates.isEmpty()) {
@@ -205,7 +229,7 @@ public class BondIssuanceAnswerHandler implements AnswerHandler {
      */
     private BondQuestion filingCorpOf(
             BondQuestion parsed, String question, CorpNameResolver corpNames) {
-        LocalDate reportDate = resolveReportDate(question);
+        LocalDate reportDate = QuestionReportDate.parse(question);
         if (reportDate == null || parsed.corpName() == null) {
             return parsed;
         }
@@ -221,22 +245,6 @@ public class BondIssuanceAnswerHandler implements AnswerHandler {
             }
         }
         return false;
-    }
-
-    private static LocalDate resolveReportDate(String question) {
-        Matcher matcher = KOREAN_REPORT_DATE.matcher(question);
-        if (!matcher.find()) {
-            return null;
-        }
-        try {
-            return LocalDate.of(
-                    Integer.parseInt(matcher.group(1)),
-                    Integer.parseInt(matcher.group(2)),
-                    Integer.parseInt(matcher.group(3))
-            );
-        } catch (DateTimeException | NumberFormatException ignored) {
-            return null;
-        }
     }
 
     private static RetrievedEvidence toEvidence(

@@ -126,6 +126,37 @@ class AnswerServiceTest {
     }
 
     @Test
+    void refusesForecastQuestionsBeforeReachingAHandler() {
+        // 기업명과 항목이 들어 있으면 Handler가 나서서 과거 수치를 근거로 든다.
+        // 앞날을 묻는 질문에 과거 수치가 답으로 나가면 안 된다.
+        when(handlerSelector.hasRegisteredHandlers()).thenReturn(true);
+
+        AnswerResult result = answerService.answer("Q-FORECAST", "삼성전자의 매출액 전망은?");
+
+        verify(handlerSelector, never()).select(any());
+        verify(hcxClient, never()).generate(any());
+        assertThat(result.answer())
+                .startsWith(AnswerService.ANSWER_UNAVAILABLE)
+                .contains("미래 예측");
+        assertThat(result.thinkTrace()).contains("미래 예측");
+        assertThat(result.retrievedContext()).isEmpty();
+    }
+
+    @Test
+    void refusesYearsOutsideTheCorpusBeforeReachingAHandler() {
+        when(handlerSelector.hasRegisteredHandlers()).thenReturn(true);
+
+        AnswerResult result = answerService.answer("Q-PERIOD", "삼성전자의 2015년 매출액은?");
+
+        verify(handlerSelector, never()).select(any());
+        verify(hcxClient, never()).generate(any());
+        assertThat(result.answer())
+                .startsWith(AnswerService.ANSWER_UNAVAILABLE)
+                .contains("2023-01-01");
+        assertThat(result.thinkTrace()).contains("2015").contains("코퍼스 범위");
+    }
+
+    @Test
     void returnsUnavailableWhenNoHandlerRegistered() {
         when(handlerSelector.hasRegisteredHandlers()).thenReturn(false);
 

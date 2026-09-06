@@ -193,7 +193,34 @@ public class BondIssuanceAnswerHandler implements AnswerHandler {
                 DocGroup.MAJOR, BondForm.CONVERTIBLE.docSubtype()));
         identities.addAll(corpIdentityRepository.findByDocGroupAndDocSubtype(
                 DocGroup.MAJOR, BondForm.EXCHANGEABLE.docSubtype()));
-        return BondQuestionParser.parse(question, CorpNameResolver.of(identities));
+        CorpNameResolver corpNames = CorpNameResolver.of(identities);
+        return filingCorpOf(BondQuestionParser.parse(question, corpNames), question, corpNames);
+    }
+
+    /**
+     * 상대 기업이 질문에 함께 나오면, <b>그날 사채 발행결정을 낸 쪽</b>을 공시 기업으로 삼는다.
+     *
+     * <p>표기가 긴 쪽을 고르는 기본 규칙으로는 상대 기업이 이긴다. 공시일이 없으면 좁힐 근거가
+     * 없어 그대로 둔다.
+     */
+    private BondQuestion filingCorpOf(
+            BondQuestion parsed, String question, CorpNameResolver corpNames) {
+        LocalDate reportDate = resolveReportDate(question);
+        if (reportDate == null || parsed.corpName() == null) {
+            return parsed;
+        }
+        String filed = corpNames.resolve(question, corp -> filedOn(corp, reportDate));
+        return filed == null || filed.equals(parsed.corpName()) ? parsed : parsed.withCorpName(filed);
+    }
+
+    private boolean filedOn(String corpName, LocalDate reportDate) {
+        for (BondForm form : BondForm.values()) {
+            if (!documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                    corpName, DocGroup.MAJOR, form.docSubtype(), reportDate).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static LocalDate resolveReportDate(String question) {

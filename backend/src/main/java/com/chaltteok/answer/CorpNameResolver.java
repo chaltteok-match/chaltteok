@@ -181,6 +181,27 @@ public final class CorpNameResolver {
         return byPosition.values().stream().distinct().toList();
     }
 
+    /**
+     * 질문에 기업이 둘 이상일 때, <b>그 공시를 낸 쪽</b>을 고른다.
+     *
+     * <p>{@link #resolve}는 표기가 긴 쪽을 고른다. 상대 기업을 함께 부르는 질문에서는
+     * 그쪽이 이긴다. 하이브 지분을 미래에셋증권이 보유한 공시를 물으면 미래에셋증권을
+     * 잡고, 그 회사의 다른 공시를 뒤진다.
+     *
+     * <p>후보 중 조건에 맞는 문서를 가진 쪽이 <b>하나뿐일 때만</b> 고른다. 둘 다 갖고 있으면
+     * 어느 쪽을 묻는지 알 수 없으므로 기존 규칙으로 돌아간다.
+     *
+     * @param hasMatchingDocument 그 기업이 질문의 조건에 맞는 문서를 가졌는지
+     */
+    public String resolve(String question, java.util.function.Predicate<String> hasMatchingDocument) {
+        List<String> candidates = resolveAll(question);
+        if (candidates.size() < 2) {
+            return resolve(question);
+        }
+        List<String> filed = candidates.stream().filter(hasMatchingDocument).toList();
+        return filed.size() == 1 ? filed.get(0) : resolve(question);
+    }
+
     private static List<Integer> occurrences(String text, String alias) {
         List<Integer> found = new ArrayList<>();
         int from = 0;

@@ -8,6 +8,11 @@ package com.chaltteok.treasury;
  * @param itemLabel 질문에 쓰인 항목 표현
  */
 record TreasuryQuestion(String corpName, String factKey, String itemLabel) {
+    /** 공시를 낸 기업을 다른 후보로 바꾼 질문. 상대 기업이 질문에 함께 나올 때 쓴다. */
+    TreasuryQuestion withCorpName(String other) {
+        return new TreasuryQuestion(other, factKey, itemLabel);
+    }
+
 
     boolean asksForSpecificItem() {
         return factKey != null;

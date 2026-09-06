@@ -32,22 +32,45 @@ public final class SingleReportDateDocuments {
                 .toList();
     }
 
+    /**
+     * 한 사건으로 볼 수 있으면 그 문서들을, 아니면 빈 목록을 돌려준다.
+     *
+     * <p>정정본은 원본 다음 날 접수되는 일이 흔하다. 접수일이 다르다고 다른 사건으로 세면
+     * 원본·정정본 한 쌍뿐인 기업에도 「공시일을 특정하지 못했습니다」가 나간다.
+     *
+     * <p>그래서 원본과 정정본을 나눠 센다. <b>원본이 하루, 정정본이 하루</b>면 한 사건이다.
+     * 원본이 여러 날이면 정정본이 하나여도 어느 사건을 묻는지 알 수 없으므로 고르지 않는다.
+     * 한 사건으로 판단되면 정정본이 원본을 대신한다.
+     */
     public static List<DisclosureDocumentEntity> uniqueDay(List<DisclosureDocumentEntity> documents) {
-        Map<LocalDate, List<DisclosureDocumentEntity>> byDate = new LinkedHashMap<>();
-        for (DisclosureDocumentEntity document : documents) {
-            LocalDate date = document.getRceptDt();
-            if (date == null) {
-                continue;
-            }
-            byDate.computeIfAbsent(date, key -> new ArrayList<>()).add(document);
-        }
-        if (byDate.size() != 1) {
-            return List.of();
-        }
-        List<DisclosureDocumentEntity> sameDay = byDate.values().iterator().next();
-        List<DisclosureDocumentEntity> corrections = sameDay.stream()
+        List<DisclosureDocumentEntity> dated = documents.stream()
+                .filter(document -> document.getRceptDt() != null)
+                .toList();
+        List<DisclosureDocumentEntity> corrections = dated.stream()
                 .filter(DisclosureDocumentEntity::isCorrection)
                 .toList();
-        return corrections.isEmpty() ? List.copyOf(sameDay) : corrections;
+        List<DisclosureDocumentEntity> originals = dated.stream()
+                .filter(document -> !document.isCorrection())
+                .toList();
+        if (distinctDays(originals) > 1 || distinctDays(corrections) > 1) {
+            return List.of();
+        }
+        if (corrections.isEmpty()) {
+            return originals.isEmpty() ? List.of() : List.copyOf(originals);
+        }
+        // 정정본은 원본보다 뒤에 온다. 앞선 정정본은 다른 사건의 것이므로 잇지 않는다.
+        if (!originals.isEmpty()
+                && corrections.getFirst().getRceptDt().isBefore(originals.getFirst().getRceptDt())) {
+            return List.of();
+        }
+        return List.copyOf(corrections);
+    }
+
+    private static int distinctDays(List<DisclosureDocumentEntity> documents) {
+        Map<LocalDate, List<DisclosureDocumentEntity>> byDate = new LinkedHashMap<>();
+        for (DisclosureDocumentEntity document : documents) {
+            byDate.computeIfAbsent(document.getRceptDt(), key -> new ArrayList<>()).add(document);
+        }
+        return byDate.size();
     }
 }

@@ -30,6 +30,54 @@ class SingleReportDateDocumentsTest {
     }
 
     @Test
+    void keepsTheCorrectionWhenItArrivedTheNextDay() {
+        // 정정본이 원본 다음 날 접수되는 일이 흔하다. 다른 사건으로 세면 안 된다.
+        DisclosureDocumentEntity original = document("a", LocalDate.of(2024, 4, 22), false);
+        DisclosureDocumentEntity correction = document("b", LocalDate.of(2024, 4, 23), true);
+
+        assertThat(SingleReportDateDocuments.uniqueDay(List.of(original, correction)))
+                .containsExactly(correction);
+    }
+
+    @Test
+    void returnsEmptyWhenSeveralOriginalsExistEvenIfOnlyOneWasCorrected() {
+        // 원본이 여러 날이면 정정본이 하나여도 어느 사건을 묻는지 알 수 없다.
+        DisclosureDocumentEntity first = document("a", LocalDate.of(2023, 5, 2), false);
+        DisclosureDocumentEntity second = document("b", LocalDate.of(2024, 4, 22), false);
+        DisclosureDocumentEntity correction = document("c", LocalDate.of(2024, 4, 23), true);
+
+        assertThat(SingleReportDateDocuments.uniqueDay(List.of(first, second, correction)))
+                .isEmpty();
+    }
+
+    @Test
+    void returnsEmptyWhenCorrectionsThemselvesSpanSeveralDays() {
+        DisclosureDocumentEntity original = document("a", LocalDate.of(2024, 4, 22), false);
+        DisclosureDocumentEntity first = document("b", LocalDate.of(2024, 4, 23), true);
+        DisclosureDocumentEntity second = document("c", LocalDate.of(2024, 7, 1), true);
+
+        assertThat(SingleReportDateDocuments.uniqueDay(List.of(original, first, second)))
+                .isEmpty();
+    }
+
+    @Test
+    void keepsASingleOriginalWithNoCorrection() {
+        DisclosureDocumentEntity original = document("a", LocalDate.of(2024, 4, 22), false);
+
+        assertThat(SingleReportDateDocuments.uniqueDay(List.of(original)))
+                .containsExactly(original);
+    }
+
+    @Test
+    void returnsEmptyWhenTheCorrectionIsOlderThanTheOriginal() {
+        // 정정본이 원본보다 앞설 수는 없다. 다른 사건의 정정본이다.
+        DisclosureDocumentEntity correction = document("a", LocalDate.of(2025, 4, 8), true);
+        DisclosureDocumentEntity original = document("b", LocalDate.of(2025, 4, 18), false);
+
+        assertThat(SingleReportDateDocuments.uniqueDay(List.of(correction, original))).isEmpty();
+    }
+
+    @Test
     void keepsOnlyDocumentsInTheAskedYear() {
         DisclosureDocumentEntity in2024 = document("a", LocalDate.of(2024, 9, 30), false);
         DisclosureDocumentEntity in2025 = document("b", LocalDate.of(2025, 8, 14), false);

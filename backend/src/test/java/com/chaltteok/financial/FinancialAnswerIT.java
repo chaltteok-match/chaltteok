@@ -251,20 +251,37 @@ class FinancialAnswerIT {
     }
 
     @Test
-    void doesNotCompareRatiosOnAPathThatWouldAnswerSomethingElse() throws Exception {
-        // 기업 간 비교는 분자 금액을 견주고, 연도 대비는 대상 연도 비율만 답한다.
-        // 둘 다 물어본 것과 다른 답이라 계산하지 않는다.
-        for (String question : List.of(
-                "삼성전자와 SK하이닉스의 2024년 영업이익률을 비교하면?",
-                "삼성전자의 2024년 연결기준 영업이익률은 2023년 대비 얼마나 늘었는가?")) {
-            mockMvc.perform(get("/answer")
-                            .param("question_id", "Q-PERIODIC-RATIO-CMP")
-                            .param("question", question))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.think_trace").value(
-                            containsString("비율 비교 질문으로 분류")))
-                    .andExpect(jsonPath("$.answer").value("제공된 공시 데이터에서는 확인할 수 없습니다."));
-        }
+    void comparesARatioAcrossYearsInPercentagePoints() throws Exception {
+        // 2024년 32,725,961/300,870,903 = 10.88%, 2023년 6,566,976/258,935,494 = 2.54%
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 2024년 연결기준 영업이익률은 10.88%로 2023년 2.54% 대비 8.34%p 올랐습니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-RATIO-YEAR")
+                        .param("question",
+                                "삼성전자의 2024년 연결기준 영업이익률은 2023년 대비 얼마나 변했나?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(allOf(
+                        containsString("영업이익률=32725961000000/300870903000000×100=10.88%"),
+                        containsString("2023년 영업이익률=6566976000000/258935494000000×100=2.54%"),
+                        // 비율의 증감은 %p다. %로 적으면 다른 뜻이 된다.
+                        containsString("증감=8.34%p(10.88-2.54)")
+                )))
+                .andExpect(jsonPath("$.answer").value(containsString("8.34%p")));
+    }
+
+    @Test
+    void refusesTheRatioComparisonWhenTheOtherYearCannotBeComputed() throws Exception {
+        // 픽스처에 2020년 보고서가 없다. 한쪽만 내보내면 모델이 나머지를 지어낸다.
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-RATIO-YEAR-2")
+                        .param("question",
+                                "삼성전자의 2024년 연결기준 영업이익률은 2020년 대비 얼마나 변했나?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(
+                        containsString("비교 기준 연도(2020년) 계산 불가")))
+                .andExpect(jsonPath("$.answer").value("제공된 공시 데이터에서는 확인할 수 없습니다."));
 
         verify(hcxClient, never()).generate(any(HcxPrompt.class));
     }

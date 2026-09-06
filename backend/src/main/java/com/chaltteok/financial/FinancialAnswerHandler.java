@@ -299,13 +299,47 @@ public class FinancialAnswerHandler implements AnswerHandler {
         List<DisclosureDocumentEntity> documents =
                 documentRepository.findByCorpNameAndDocGroupAndBaseYearOrderByRceptDtDescRceptNoDesc(
                         corpName, DocGroup.PERIODIC, parsed.targetYear());
-        if (documents.isEmpty()) {
+        if (!documents.isEmpty()) {
+            // 연간 수치를 묻는 질문이므로 사업보고서를 우선하고, 같은 조건이면 최신 접수분을 쓴다.
+            return documents.stream()
+                    .min(Comparator.comparingInt(
+                            document -> "annual".equals(document.getDocSubtype()) ? 0 : 1));
+        }
+        return reportContainingYear(parsed, corpName);
+    }
+
+    /**
+     * 그 해가 기준연도인 보고서가 없을 때, 그 해 수치를 담은 보고서를 찾는다.
+     *
+     * <p>요약재무정보 표는 한 번에 세 기간을 담는다. 코퍼스 접수가 2023-01-01부터라
+     * {@code base_year}는 2023년부터지만, 2023년 사업보고서에 2022·2021년 값이 함께 실려 있다.
+     * 기준연도만 보면 값이 있는데도 「정기공시가 없습니다」가 나간다.
+     *
+     * <p>질문 연도에 가까운 보고서를 먼저 본다. 뒤에 나온 보고서일수록 그 해 수치가 다시
+     * 작성됐을 수 있어, 그 해를 담은 보고서 중 가장 이른 것이 원래 공시된 값에 가깝다.
+     */
+    private Optional<DisclosureDocumentEntity> reportContainingYear(
+            FinancialQuestion parsed, String corpName) {
+        if (parsed.targetYear() == null) {
             return Optional.empty();
         }
-        // 연간 수치를 묻는 질문이므로 사업보고서를 우선하고, 같은 조건이면 최신 접수분을 쓴다.
-        return documents.stream()
-                .min(Comparator.comparingInt(
-                        document -> "annual".equals(document.getDocSubtype()) ? 0 : 1));
+        return documentRepository
+                .findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(corpName, DocGroup.PERIODIC)
+                .stream()
+                .sorted(Comparator
+                        .comparingInt((DisclosureDocumentEntity document) ->
+                                document.getBaseYear() == null ? Integer.MAX_VALUE : document.getBaseYear())
+                        .thenComparingInt(document ->
+                                "annual".equals(document.getDocSubtype()) ? 0 : 1))
+                .filter(document -> containsYear(document, parsed))
+                .findFirst();
+    }
+
+    /** 그 보고서에 질문한 해의 연간 수치가 실제로 있는지. 조회는 후보마다 한 번씩만 한다. */
+    private boolean containsYear(DisclosureDocumentEntity document, FinancialQuestion parsed) {
+        return usableFactOfYear(
+                factRepository.findForAnswer(document.getDocId(), parsed.factKey(), parsed.scope()),
+                parsed.targetYear()).isPresent();
     }
 
     private static Optional<ExtractedFactEntity> factOfYear(List<ExtractedFactEntity> facts, Integer year) {

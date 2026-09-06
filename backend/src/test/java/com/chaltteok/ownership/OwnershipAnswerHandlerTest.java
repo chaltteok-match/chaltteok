@@ -106,18 +106,44 @@ class OwnershipAnswerHandlerTest {
     }
 
     @Test
-    void requiresReportDateWhenSeveralFilingsExist() {
+    void usesTheLatestFilingWhenSeveralExistAndNoDateIsGiven() {
+        // 대량보유는 보유자마다 갱신되는 상태 보고다. 여러 건이 정상이고 최신이 최신 상태다.
         DisclosureDocumentEntity first = document("holding_20250115000001", false);
-        DisclosureDocumentEntity second = document("holding_20250310000001", LocalDate.of(2025, 3, 10), false);
+        DisclosureDocumentEntity second =
+                document("holding_20250310000001", LocalDate.of(2025, 3, 10), false);
         when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
                 "삼성전자", DocGroup.HOLDING, "대량보유상황보고서"))
                 .thenReturn(List.of(first, second));
+        when(factRepository.findByDocumentDocId("holding_20250310000001"))
+                .thenReturn(List.of(
+                        fact(second, "ownership_ratio", "보유비율 (%)", "9.10", "9.10", "%")
+                ));
 
         AnswerHandlerResult result = handler.handle("Q-OWN", "삼성전자 대량보유상황보고서의 지분율은?");
-        assertThat(result.isAnswerable()).isFalse();
-        assertThat(result.unavailableReason()).contains("공시일");
+
+        assertThat(result.isAnswerable()).isTrue();
+        // 어느 것을 골랐는지 드러나야 한다.
+        assertThat(result.processSummary())
+                .contains("공시일 2건 중 최신 2025-03-10 사용");
+        assertThat(result.evidences().getFirst().evidenceText()).contains("9.10");
         verify(documentRepository, never()).findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
                 any(), any(), any(), any());
+    }
+
+    @Test
+    void takesHoldingQuestionsThatDoNotNameTheFormAtAll() {
+        // 대량보유상황보고서라고 쓰는 사람은 드물다. 파서가 아는 항목 표현을 그대로 받는다.
+        assertThat(handler.supports("삼성전자의 지분율은 얼마인가?")).isTrue();
+        assertThat(handler.supports("삼성전자 지분을 보유한 주요 주주는?")).isTrue();
+        assertThat(handler.supports("삼성전자의 보유목적은 무엇인가?")).isTrue();
+        assertThat(handler.supports("삼성전자의 대표보고자는 누구인가?")).isTrue();
+        assertThat(handler.supports("삼성전자의 보유주식수는?")).isTrue();
+        assertThat(handler.supports("삼성전자의 보유 목적은 무엇인가?")).isTrue();
+
+        // 대량보유상황보고서는 5% 이상 보유자를 보고할 뿐 최대주주를 정하지 않는다.
+        // 받으면 보고자 중 하나를 최대주주라고 답하게 된다.
+        assertThat(handler.supports("삼성전자의 최대주주는 누구인가?")).isFalse();
+        assertThat(handler.supports("삼성전자의 주주총회는 언제인가?")).isFalse();
     }
 
     @Test

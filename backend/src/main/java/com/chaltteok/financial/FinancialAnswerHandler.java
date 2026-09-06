@@ -33,8 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 정기공시 재무 수치 조회와 연도 비교·계산을 담당한다.
  *
- * <p>요약재무정보 표 하나에 3개 기간이 들어 있으므로, 단일 조회와 전년 대비 비교를
- * 모두 문서 한 건으로 처리한다. 근거 조립까지만 하고 최종 문장은 HCX가 만든다.
+ * <p>요약재무정보 표 하나에 3개 기간이 들어 있으므로 대부분 문서 한 건으로 끝난다.
+ * 다만 네 해 이상 떨어진 비교는 한 표에 담기지 않아 보고서 두 건에서 값을 가져온다.
+ * 근거 조립까지만 하고 최종 문장은 HCX가 만든다.
  */
 @Component
 @Order(30)
@@ -75,6 +76,18 @@ public class FinancialAnswerHandler implements AnswerHandler {
     @Transactional(readOnly = true)
     public AnswerHandlerResult handle(String questionId, String question) {
         FinancialQuestion initial = parse(question);
+        if (initial.isRatio() && (initial.isCorpComparison() || initial.isComparison())) {
+            // 비율 비교는 아직 계산하지 않는다. 여기서 막지 않으면 기업 간 비교는 분자 금액을
+            // 견주고, 연도 대비는 대상 연도 비율만 답한다. 둘 다 물어본 것과 다른 답이다.
+            return AnswerHandlerResult.unavailable(
+                    "비율 비교 질문으로 분류 → 아직 계산하지 않음",
+                    "%s%s 비교하는 것은 제공된 공시 데이터로 아직 계산하지 않습니다."
+                            .formatted(initial.itemLabel(),
+                                    KoreanParticle.object(initial.itemLabel()))
+                            + " 특정 연도의 %s%s 물어봐 주세요"
+                                    .formatted(initial.itemLabel(),
+                                            KoreanParticle.object(initial.itemLabel())));
+        }
         if (initial.wantsCorpRanking()) {
             // 근거를 댈 수 있는 것은 질문에 이름이 나온 기업뿐이다. 70개사를 훑어 순위를 매기면
             // 적재되지 않은 기업이 빠진 채 「가장 크다」고 답하게 된다.
@@ -323,8 +336,22 @@ public class FinancialAnswerHandler implements AnswerHandler {
             ExtractedFactEntity targetFact,
             String searchSummary
     ) {
-        Optional<ExtractedFactEntity> base = factOfYear(facts, parsed.baseYear());
-        if (base.isEmpty() || base.get().getNormalizedValue() == null) {
+        DisclosureDocumentEntity baseDocument = document;
+        Optional<ExtractedFactEntity> base = usableFactOfYear(facts, parsed.baseYear());
+        if (base.isEmpty()) {
+            // 요약재무정보 표는 세 기간뿐이라 네 해 이상 떨어진 연도는 같은 표에 들어가지 못한다.
+            // 대상 연도 문서에 없으면 기준 연도를 담은 다른 보고서에서 찾는다.
+            Optional<DisclosureDocumentEntity> other =
+                    reportContainingYear(parsed, parsed.corpName(), parsed.baseYear());
+            if (other.isPresent()) {
+                baseDocument = other.get();
+                base = usableFactOfYear(
+                        factRepository.findForAnswer(
+                                baseDocument.getDocId(), parsed.factKey(), parsed.scope()),
+                        parsed.baseYear());
+            }
+        }
+        if (base.isEmpty()) {
             return AnswerHandlerResult.unavailable(
                     List.of(evidenceOf(document, targetFact)),
                     searchSummary + " → 비교 기준 연도(%d년) 수치 없음".formatted(parsed.baseYear()),
@@ -341,6 +368,10 @@ public class FinancialAnswerHandler implements AnswerHandler {
                 .append(" → %d년 %s, %d년 %s 확인".formatted(
                         parsed.targetYear(), KoreanAmountFormatter.format(targetFact.getNormalizedValue()),
                         parsed.baseYear(), KoreanAmountFormatter.format(baseFact.getNormalizedValue())));
+        if (baseDocument != document) {
+            summary.append("(%d년은 '%s'(%s)에서 확인)".formatted(
+                    parsed.baseYear(), baseDocument.getReportNm(), baseDocument.getRceptDt()));
+        }
 
         changeRate(current, previous).ifPresentOrElse(
                 rate -> summary.append(" → 증감액=%s, 증감률=(%s-%s)/%s×100=%s%%".formatted(
@@ -352,8 +383,8 @@ public class FinancialAnswerHandler implements AnswerHandler {
 
         List<RetrievedEvidence> evidences = new ArrayList<>();
         addEvidence(evidences, document, targetFact);
-        addEvidence(evidences, document, baseFact);
-        appendCounterpart(summary, evidences, parsed, document);
+        addEvidence(evidences, baseDocument, baseFact);
+        appendCounterpart(summary, evidences, parsed, document, baseDocument);
         return AnswerHandlerResult.of(evidences, summary.toString());
     }
 
@@ -387,7 +418,12 @@ public class FinancialAnswerHandler implements AnswerHandler {
      */
     private Optional<DisclosureDocumentEntity> reportContainingYear(
             FinancialQuestion parsed, String corpName) {
-        if (parsed.targetYear() == null) {
+        return reportContainingYear(parsed, corpName, parsed.targetYear());
+    }
+
+    private Optional<DisclosureDocumentEntity> reportContainingYear(
+            FinancialQuestion parsed, String corpName, Integer year) {
+        if (year == null) {
             return Optional.empty();
         }
         return documentRepository
@@ -398,15 +434,16 @@ public class FinancialAnswerHandler implements AnswerHandler {
                                 document.getBaseYear() == null ? Integer.MAX_VALUE : document.getBaseYear())
                         .thenComparingInt(document ->
                                 "annual".equals(document.getDocSubtype()) ? 0 : 1))
-                .filter(document -> containsYear(document, parsed))
+                .filter(document -> containsYear(document, parsed, year))
                 .findFirst();
     }
 
-    /** 그 보고서에 질문한 해의 연간 수치가 실제로 있는지. 조회는 후보마다 한 번씩만 한다. */
-    private boolean containsYear(DisclosureDocumentEntity document, FinancialQuestion parsed) {
+    /** 그 보고서에 물어본 해의 연간 수치가 실제로 있는지. 조회는 후보마다 한 번씩만 한다. */
+    private boolean containsYear(
+            DisclosureDocumentEntity document, FinancialQuestion parsed, Integer year) {
         return usableFactOfYear(
                 factRepository.findForAnswer(document.getDocId(), parsed.factKey(), parsed.scope()),
-                parsed.targetYear()).isPresent();
+                year).isPresent();
     }
 
     private static Optional<ExtractedFactEntity> factOfYear(List<ExtractedFactEntity> facts, Integer year) {
@@ -459,6 +496,16 @@ public class FinancialAnswerHandler implements AnswerHandler {
             FinancialQuestion parsed,
             DisclosureDocumentEntity document
     ) {
+        appendCounterpart(summary, evidences, parsed, document, document);
+    }
+
+    private void appendCounterpart(
+            StringBuilder summary,
+            List<RetrievedEvidence> evidences,
+            FinancialQuestion parsed,
+            DisclosureDocumentEntity document,
+            DisclosureDocumentEntity baseDocument
+    ) {
         if (parsed.scopeExplicit()) {
             return;
         }
@@ -481,7 +528,11 @@ public class FinancialAnswerHandler implements AnswerHandler {
         if (!parsed.isComparison()) {
             return;
         }
-        Optional<ExtractedFactEntity> counterpartBase = usableFactOfYear(facts, parsed.baseYear());
+        // 기준 연도 수치가 다른 보고서에서 나왔으면 참고 기준도 그 보고서에서 찾는다.
+        List<ExtractedFactEntity> baseFacts = baseDocument == document
+                ? facts
+                : factRepository.findForAnswer(baseDocument.getDocId(), parsed.factKey(), counterpart);
+        Optional<ExtractedFactEntity> counterpartBase = usableFactOfYear(baseFacts, parsed.baseYear());
         if (counterpartBase.isEmpty()) {
             summary.append(", %d년 수치가 없어 %s기준 증감은 계산하지 않음".formatted(parsed.baseYear(), scopeName));
             return;
@@ -489,7 +540,7 @@ public class FinancialAnswerHandler implements AnswerHandler {
         ExtractedFactEntity baseFact = counterpartBase.get();
         summary.append(", %d년 %s".formatted(
                 parsed.baseYear(), KoreanAmountFormatter.format(baseFact.getNormalizedValue())));
-        addEvidence(evidences, document, baseFact);
+        addEvidence(evidences, baseDocument, baseFact);
     }
 
     private static Scope counterpartScope(Scope scope) {

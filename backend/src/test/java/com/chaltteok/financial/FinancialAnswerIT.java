@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -236,15 +237,65 @@ class FinancialAnswerIT {
     }
 
     @Test
-    void refusesTheRatioWhenTheDenominatorIsMissing() throws Exception {
-        // 이 픽스처에는 2022년 매출액이 있지만 2021년 영업이익은 없다.
+    void doesNotAnswerARatioForAYearTheFixtureDoesNotHold() throws Exception {
+        // 분모가 없는 것이 아니라 2020년 보고서가 없다. 어느 쪽이든 계산하지 않는다.
         mockMvc.perform(get("/answer")
                         .param("question_id", "Q-PERIODIC-RATIO-2")
                         .param("question", "삼성전자의 2020년 연결기준 부채비율은?"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(
+                        containsString("2020년 정기공시가 없습니다")))
                 .andExpect(jsonPath("$.answer").value("제공된 공시 데이터에서는 확인할 수 없습니다."));
 
         verify(hcxClient, never()).generate(any(HcxPrompt.class));
+    }
+
+    @Test
+    void doesNotCompareRatiosOnAPathThatWouldAnswerSomethingElse() throws Exception {
+        // 기업 간 비교는 분자 금액을 견주고, 연도 대비는 대상 연도 비율만 답한다.
+        // 둘 다 물어본 것과 다른 답이라 계산하지 않는다.
+        for (String question : List.of(
+                "삼성전자와 SK하이닉스의 2024년 영업이익률을 비교하면?",
+                "삼성전자의 2024년 연결기준 영업이익률은 2023년 대비 얼마나 늘었는가?")) {
+            mockMvc.perform(get("/answer")
+                            .param("question_id", "Q-PERIODIC-RATIO-CMP")
+                            .param("question", question))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.think_trace").value(
+                            containsString("비율 비교 질문으로 분류")))
+                    .andExpect(jsonPath("$.answer").value("제공된 공시 데이터에서는 확인할 수 없습니다."));
+        }
+
+        verify(hcxClient, never()).generate(any(HcxPrompt.class));
+    }
+
+    @Test
+    void comparesTwoYearsThatNoSingleReportHoldsTogether() throws Exception {
+        // 표는 세 기간뿐이라 2024년 보고서에 2021년이 없다. 2021년은 2023년 보고서에서 가져온다.
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 2024년 연결기준 매출액은 2021년 대비 7.61% 증가했습니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-FAR")
+                        .param("question",
+                                "삼성전자의 2024년 연결기준 매출액은 2021년 대비 얼마나 늘었는가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(allOf(
+                        containsString("2024년 300조 8,709억원"),
+                        containsString("2021년 279조 6,047억원"),
+                        // 두 수치의 출처 보고서가 각각 드러나야 한다.
+                        containsString("사업보고서 (2024.12)"),
+                        containsString("2021년은 '사업보고서 (2023.12)'"),
+                        containsString(
+                                "증감률=(300870903000000-279604799000000)/279604799000000×100=7.61%")
+                )))
+                // 근거도 두 보고서에서 각각 나온다.
+                .andExpect(jsonPath("$.retrieved_context").value(allOf(
+                        containsString("300,870,903"),
+                        containsString("279,604,799")
+                )))
+                .andExpect(jsonPath("$.answer").value(containsString("7.61%")));
     }
 
     @Test

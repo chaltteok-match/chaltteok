@@ -95,6 +95,20 @@ class FinancialQuestionParserTest {
         assertThat(parse("삼성전자의 2024년 매출액증가율은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 총자산회전율은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 주당순이익은?").factKey()).isNull();
+        // 항목마다 만들어지는 표기. 목록에 적어 두지 않아도 꼬리로 걸러진다.
+        assertThat(parse("삼성전자의 2024년 당기순이익증가율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 영업수익증가율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 자기자본증가율은?").factKey()).isNull();
+    }
+
+    @Test
+    void refusesUncomputableRatiosWrittenWithASpace() {
+        // 표현을 찾을 때 공백을 지우므로 띄어 쓴 표기도 같게 본다.
+        assertThat(parse("삼성전자의 2024년 매출 증가율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 매출액 증가율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 순이익 증가율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 총자산 회전율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 영업이익 증가율은?").factKey()).isNull();
     }
 
     @Test
@@ -103,15 +117,22 @@ class FinancialQuestionParserTest {
                 .isEqualTo(FinancialRatio.OPERATING_MARGIN);
         assertThat(parse("삼성전자의 2024년 순이익률은?").ratio())
                 .isEqualTo(FinancialRatio.NET_MARGIN);
+        assertThat(parse("삼성전자의 2024년 당기순이익률은?").ratio())
+                .isEqualTo(FinancialRatio.NET_MARGIN);
         assertThat(parse("삼성전자의 2024년 부채비율은?").ratio())
                 .isEqualTo(FinancialRatio.DEBT_RATIO);
         assertThat(parse("삼성전자의 2024년 자기자본비율은?").ratio())
+                .isEqualTo(FinancialRatio.EQUITY_RATIO);
+        // 띄어 쓴 비율도 같게 본다.
+        assertThat(parse("삼성전자의 2024년 자기자본 비율은?").ratio())
                 .isEqualTo(FinancialRatio.EQUITY_RATIO);
         assertThat(parse("삼성전자의 2024년 ROE는?").ratio())
                 .isEqualTo(FinancialRatio.RETURN_ON_EQUITY);
         assertThat(parse("삼성전자의 2024년 자기자본이익률은?").ratio())
                 .isEqualTo(FinancialRatio.RETURN_ON_EQUITY);
         assertThat(parse("삼성전자의 2024년 ROA는?").ratio())
+                .isEqualTo(FinancialRatio.RETURN_ON_ASSETS);
+        assertThat(parse("삼성전자의 2024년 총자산순이익률은?").ratio())
                 .isEqualTo(FinancialRatio.RETURN_ON_ASSETS);
     }
 

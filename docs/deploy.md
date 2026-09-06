@@ -5,6 +5,11 @@
 
 로컬 개발 환경은 [`infra/README.md`](../infra/README.md)를 보세요. 이 문서는 서버 전용입니다.
 
+명령마다 **어디서 치는지** 적어 두었습니다. 헷갈리면 여기부터 보세요.
+
+- `[노트북]` — 지금 쓰는 개발 장비. 코퍼스와 로컬 DB가 있는 곳
+- `[서버]` — NCP 장비. SSH로 들어간 뒤
+
 ## 지금 범위 — 대회 제출용 최소 구성
 
 장비 한 대에 애플리케이션과 PostgreSQL을 컨테이너로 함께 올립니다. 일부러 넣지 않은 것이 있습니다.
@@ -74,23 +79,27 @@ db     37MB / 512MB
 ## 2. 서버 준비
 
 ```bash
-# Docker
+# [서버] Docker
 sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 git
 sudo usermod -aG docker $USER && newgrp docker
 
-# 시각 동기화 — 주최측 server_time과 크게 다르면 안 됩니다
+# [서버] 시각 동기화 — 주최측 server_time과 크게 다르면 안 됩니다
 timedatectl
 
-# 아웃바운드 확인 — 공지의 헬스체크
+# [서버] 아웃바운드 확인 — 우리 서버에서 주최측으로 나갈 수 있는지 봅니다
 curl -s http://34.64.175.191/health
 # {"status":"ok","server_time":"...","notice_version":"..."}
 ```
 
 `timeout`이나 `connection refused`가 나오면 방화벽·프록시를 먼저 확인합니다.
 
+`34.64.175.191`은 **주최측 주소**입니다. 우리 서버가 밖으로 나갈 수 있는지 보는 것이지,
+우리 서버가 밖에서 보이는지 보는 것이 아닙니다. 그건 §6에서 우리 공인 IP로 따로 확인합니다.
+
 ## 3. 코드와 설정
 
 ```bash
+# [서버]
 git clone <저장소 주소> && cd chaltteok/infra
 cp .env.server.example .env.server
 ```
@@ -107,17 +116,36 @@ cp .env.server.example .env.server
 
 서버에서 코퍼스를 받아 전처리를 돌릴 필요가 없습니다. 로컬 DB를 덤프해 옮깁니다(압축 1.9MB).
 
-```bash
-# 로컬에서
-docker exec chaltteok-db pg_dump -U chaltteok -Fc chaltteok > chaltteok.dump
-#          └ 컨테이너 이름         └ 사용자      └ DB 이름
-scp chaltteok.dump 서버주소:~/
+**노트북 DB 이름과 서버 DB 이름은 다를 수 있습니다.** 노트북은 `infra/.env`의 `POSTGRES_DB`,
+서버는 `infra/.env.server`의 `POSTGRES_DB`를 씁니다. 덤프는 노트북 이름으로 뜨고, 복원은 서버
+이름으로 넣습니다. 이름이 다르면 `pg_restore`의 `-d`만 서버 이름으로 맞추면 됩니다.
 
-# 서버에서 — DB만 먼저 띄우고 복원
+```bash
+# [노트북] 내 DB 컨테이너 이름과 DB 이름부터 확인합니다
+docker ps --format '{{.Names}}'
+grep POSTGRES_DB infra/.env
+
+# [노트북] 덤프 — 컨테이너 이름과 DB 이름을 위에서 본 값으로 씁니다
+docker exec <컨테이너이름> pg_dump -U <사용자> -Fc <노트북DB이름> > chaltteok.dump
+scp chaltteok.dump <서버계정>@<공인IP>:~/
+```
+
+```bash
+# [서버] DB만 먼저 띄웁니다
 cd chaltteok/infra
 docker compose -f docker-compose.server.yml --env-file .env.server up -d db
+
+# [서버] healthy가 될 때까지 기다립니다. 뜨자마자 복원하면 연결이 거부됩니다
+until [ "$(docker compose -f docker-compose.server.yml --env-file .env.server \
+        ps db --format '{{.Health}}')" = "healthy" ]; do sleep 2; done
+
+# [서버] 복원 — -d 는 .env.server의 POSTGRES_DB 값입니다
 docker compose -f docker-compose.server.yml --env-file .env.server exec -T db \
     pg_restore -U chaltteok -d chaltteok --clean --if-exists < ~/chaltteok.dump
+
+# [서버] 들어갔는지 확인 — 3,772건이면 정상입니다
+docker compose -f docker-compose.server.yml --env-file .env.server exec -T db \
+    psql -U chaltteok -d chaltteok -c 'select count(*) from disclosure_document;'
 ```
 
 전처리부터 다시 만드는 절차는 [`backend/README.md`](../backend/README.md#데이터를-처음부터-다시-만들기)에 있습니다. 재현이 필요할 때만 쓰면 됩니다.
@@ -125,6 +153,7 @@ docker compose -f docker-compose.server.yml --env-file .env.server exec -T db \
 ## 5. 실행
 
 ```bash
+# [서버]
 docker compose -f docker-compose.server.yml --env-file .env.server up -d --build
 ```
 
@@ -138,23 +167,45 @@ docker compose -f docker-compose.server.yml --env-file .env.server up -d --build
 
 ## 6. 확인
 
+**질문은 `--data-urlencode`로 넘깁니다.** 직접 퍼센트 인코딩하면 문장 끝의 `?`가 그대로 들어가
+`question`이 잘리고 **400이 납니다.**
+
 ```bash
-# 서버 안에서
+# [서버] 안에서
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost/actuator/health     # 200
-curl -s 'http://localhost/answer?question_id=Q1&question=삼성전자의%202030년%20예상%20주가는?'
+
+curl -s -G 'http://localhost/answer' \
+    --data-urlencode 'question_id=Q1' \
+    --data-urlencode 'question=삼성전자의 2030년 예상 주가는?'
 # 200, 5개 필드. 근거가 없는 질문이라 answer는 "확인할 수 없습니다"
 
-# 밖에서 — 여기서 응답이 와야 평가가 됩니다
-curl -s -o /dev/null -w '%{http_code}\n' http://<외부IP>/actuator/health
+curl -s -G -o /dev/null -w '%{http_code}\n' 'http://localhost/answer' \
+    --data-urlencode 'question_id=Q2' \
+    --data-urlencode 'question=삼성전자의 2024년 연결 매출액은?'
+# 200이어야 합니다. 503이면 HCX 설정을 봅니다
 ```
+
+```bash
+# [노트북] 밖에서 — 여기서 응답이 와야 평가가 됩니다.
+# 주소는 우리 서버의 공인 IP입니다. §2의 34.64.175.191(주최측)이 아닙니다.
+curl -s -o /dev/null -w '%{http_code}\n' http://<우리공인IP>/actuator/health
+
+curl -s -G 'http://<우리공인IP>/answer' \
+    --data-urlencode 'question_id=Q3' \
+    --data-urlencode 'question=삼성전자의 2024년 연결 매출액은?'
+```
+
+밖에서 연결이 안 되면 ACG 인바운드 80을 봅니다. 주최측 IP만 열려 있으면 우리 자리에서는
+막히는 것이 정상이라, 확인하려면 우리 IP를 잠깐 넣거나 80을 열어야 합니다.
 
 근거를 찾은 질문이 **503**이면 `HCX_API_KEY`가 비었거나 `HCX_ENABLED`가 `false`입니다.
 
-확인이 끝나면 **외부 IP를 `README.md`의 Endpoint URL에 적습니다.**
+확인이 끝나면 **우리 공인 IP를 `README.md`의 Endpoint URL에 적습니다.**
 
 ## 7. 평가 기간 운영
 
 ```bash
+# [서버]
 docker compose -f docker-compose.server.yml --env-file .env.server ps      # 상태
 docker compose -f docker-compose.server.yml --env-file .env.server logs -f app
 docker compose -f docker-compose.server.yml --env-file .env.server restart app
@@ -189,6 +240,9 @@ root와 같은 힘을 갖습니다. 평가 전용 장비라 감수한 선택입�
 | `Failed to configure a DataSource` | `SPRING_PROFILES_ACTIVE`가 `server`가 아니거나 `DB_*`가 비었습니다 |
 | 근거 있는 질문이 503 | `HCX_API_KEY` 또는 `HCX_ENABLED` |
 | 밖에서 접속 안 됨 | 방화벽 인바운드 80, 또는 `PUBLIC_PORT`가 80이 아닙니다 |
+| `/answer`가 400 | 질문을 직접 퍼센트 인코딩했습니다. `--data-urlencode`를 씁니다 |
+| `pg_restore`가 연결 거부 | DB가 `healthy`가 되기 전에 복원했습니다 |
+| `pg_restore`가 `database ... does not exist` | `-d`가 서버 `POSTGRES_DB`와 다릅니다 |
 | 재부팅 후 주소가 바뀜 | 외부 IP를 고정으로 예약하지 않았습니다 |
 | 앱이 안 뜨고 계속 재시작 | `HCX_ENABLED=true`인데 `HCX_API_KEY`가 비었습니다. `docker compose logs app`에 이유가 찍힙니다 |
 | **모든** 질문이 503 | 데이터를 복원하지 않았습니다. 표가 없어 조회가 실패합니다 |

@@ -117,24 +117,30 @@ cp .env.server.example .env.server
 
 서버에서 코퍼스를 받아 전처리를 돌릴 필요가 없습니다. 로컬 DB를 덤프해 옮깁니다(압축 1.9MB).
 
-덤프 명령의 DB 이름은 **로컬 `infra/.env`의 `POSTGRES_DB`**입니다. 컨테이너 이름은 로컬 compose의 `container_name`입니다. 아래는 로컬 DB 이름이 `chaltteok-db`일 때의 예입니다.
+컨테이너 이름과 DB 이름은 다를 수 있습니다. 명령을 치기 전에 로컬 값을 확인합니다.
 
 ```bash
-# 노트북에서
-docker exec chaltteok-db pg_dump -U chaltteok -Fc chaltteok-db > ~/chaltteok.dump
-#          └ 컨테이너 이름         └ 사용자      └ 로컬 DB 이름
+# 노트북 — 내 값부터 확인합니다
+docker ps --format '{{.Names}}'
+grep POSTGRES_DB infra/.env
+grep POSTGRES_USER infra/.env
+
+docker exec <컨테이너이름> pg_dump -U <사용자> -Fc <로컬DB이름> > ~/chaltteok.dump
 scp ~/chaltteok.dump root@<우리_공인_IP>:~/
 
 # 서버에서 — DB만 먼저 띄우고, healthy가 된 뒤에 복원합니다.
-# 뜨자마자 복원하면 소켓이 없어 pg_restore가 실패합니다.
 cd ~/chaltteok/infra
 docker compose -f docker-compose.server.yml --env-file .env.server up -d db
-docker compose -f docker-compose.server.yml --env-file .env.server ps   # db가 healthy인지
+until [ "$(docker compose -f docker-compose.server.yml --env-file .env.server \
+        ps db --format '{{.Health}}')" = "healthy" ]; do sleep 2; done
 docker compose -f docker-compose.server.yml --env-file .env.server exec -T db \
     pg_restore -U chaltteok -d chaltteok --clean --if-exists < ~/chaltteok.dump
+docker compose -f docker-compose.server.yml --env-file .env.server exec -T db \
+    psql -U chaltteok -d chaltteok -c 'select count(*) from disclosure_document;'
+# 3,772가 아니면 덤프가 덜 들어간 것입니다
 ```
 
-서버 쪽 `-d chaltteok`은 `.env.server`의 `POSTGRES_DB`입니다. 로컬 이름이 `chaltteok-db`여도 복원 대상은 서버 DB 이름입니다.
+서버 쪽 `-U`·`-d`는 `.env.server`의 `POSTGRES_USER`·`POSTGRES_DB`입니다. 기본값은 둘 다 `chaltteok`입니다.
 
 전처리부터 다시 만드는 절차는 [`backend/README.md`](../backend/README.md#데이터를-처음부터-다시-만들기)에 있습니다. 재현이 필요할 때만 쓰면 됩니다.
 
@@ -226,10 +232,12 @@ root와 같은 힘을 갖습니다. 평가 전용 장비라 감수한 선택입�
 | --- | --- |
 | `Failed to configure a DataSource` | `SPRING_PROFILES_ACTIVE`가 `server`가 아니거나 `DB_*`가 비었습니다 |
 | 근거 있는 질문이 503 | `HCX_API_KEY` 또는 `HCX_ENABLED` |
-| **모든** 질문이 503 | 덤프 복원 실패. `pg_restore`를 DB `healthy` 전에 치면 소켓 오류가 납니다 |
-| `/answer`가 Tomcat HTML 400 | 한글·공백을 주소에 그대로 붙임. `--data-urlencode`를 씁니다 |
+| **모든** 질문이 503 | 덤프가 없거나 건수가 3,772가 아닙니다 |
+| `/answer`가 400 | 한글을 주소에 그대로 붙이거나, 질문을 직접 퍼센트 인코딩했습니다. `--data-urlencode`를 씁니다 |
+| `pg_restore` 연결 거부 | DB가 `healthy`가 되기 전에 복원했습니다 |
+| `pg_restore`가 `database ... does not exist` | `-d`가 서버 `POSTGRES_DB`와 다릅니다 |
+| 앱이 안 뜨고 계속 재시작 | `HCX_ENABLED=true`인데 키가 비었습니다. `docker compose logs app`에 이유가 찍힙니다 |
 | 밖에서 `Connection refused` | 앱이 80에 없음. compose `up`이 안 됐거나 `PUBLIC_PORT`가 80이 아닙니다 |
 | 밖에서 timeout | ACG 인바운드 80이 막힘. 맥 `curl`은 `-4`를 붙입니다 |
 | 재부팅 후 주소가 바뀜 | 외부 IP를 고정으로 예약하지 않았습니다 |
-| 앱이 안 뜨고 계속 재시작 | `HCX_ENABLED=true`인데 `HCX_API_KEY`가 비었습니다. `docker compose logs app`에 이유가 찍힙니다 |
 | 노트북에서 `sudo apt-get` 실패 | 그 명령은 Ubuntu 서버용입니다. `ssh root@공인IP` 안에서 칩니다 |

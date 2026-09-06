@@ -76,17 +76,10 @@ public class FinancialAnswerHandler implements AnswerHandler {
     @Transactional(readOnly = true)
     public AnswerHandlerResult handle(String questionId, String question) {
         FinancialQuestion initial = parse(question);
-        if (initial.isRatio() && (initial.isCorpComparison() || initial.isComparison())) {
-            // 비율 비교는 아직 계산하지 않는다. 여기서 막지 않으면 기업 간 비교는 분자 금액을
-            // 견주고, 연도 대비는 대상 연도 비율만 답한다. 둘 다 물어본 것과 다른 답이다.
-            return AnswerHandlerResult.unavailable(
-                    "비율 비교 질문으로 분류 → 아직 계산하지 않음",
-                    "%s%s 비교하는 것은 제공된 공시 데이터로 아직 계산하지 않습니다."
-                            .formatted(initial.itemLabel(),
-                                    KoreanParticle.object(initial.itemLabel()))
-                            + " 특정 연도의 %s%s 물어봐 주세요"
-                                    .formatted(initial.itemLabel(),
-                                            KoreanParticle.object(initial.itemLabel())));
+        // 비율 비교는 금액 비교 경로로 보내면 안 된다. 기업 간 비교는 분자 금액을 견주고,
+        // 연도 대비는 대상 연도 비율만 답한다. 둘 다 물어본 것과 다른 답이다.
+        if (initial.isRatio() && initial.isCorpComparison()) {
+            return ratioCorpComparison(initial);
         }
         if (initial.wantsCorpRanking()) {
             // 근거를 댈 수 있는 것은 질문에 이름이 나온 기업뿐이다. 70개사를 훑어 순위를 매기면
@@ -158,7 +151,9 @@ public class FinancialAnswerHandler implements AnswerHandler {
         }
 
         if (parsed.isRatio()) {
-            return ratio(parsed, document, targetFact, searchSummary);
+            return parsed.isComparison()
+                    ? ratioYearComparison(parsed, document, targetFact, searchSummary)
+                    : ratio(parsed, document, targetFact, searchSummary);
         }
         return parsed.isComparison()
                 ? comparison(parsed, document, facts, targetFact, searchSummary)
@@ -388,22 +383,192 @@ public class FinancialAnswerHandler implements AnswerHandler {
         return AnswerHandlerResult.of(evidences, summary.toString());
     }
 
+    /** 한 기업·한 해의 비율. 분자·분모와 그 출처를 함께 들고 다닌다. */
+    private record RatioValue(
+            DisclosureDocumentEntity document,
+            ExtractedFactEntity numerator,
+            ExtractedFactEntity denominator,
+            BigDecimal percent
+    ) { }
+
+    /**
+     * 한 기업·한 해의 비율을 계산한다. 분자·분모 중 하나라도 없거나 분모가 0이면 비어 있다.
+     *
+     * <p>분자와 분모를 같은 문서·같은 기준에서 찾는다. 문서를 섞지 않으므로 단위와
+     * 연결·별도가 어긋나지 않는다.
+     */
+    private Optional<RatioValue> ratioAt(FinancialQuestion parsed, String corpName, Integer year) {
+        FinancialRatio ratio = parsed.ratio();
+        Optional<DisclosureDocumentEntity> found = selectDocument(parsed, corpName, year);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        DisclosureDocumentEntity document = found.get();
+        Optional<ExtractedFactEntity> numerator = usableFactOfYear(
+                factRepository.findForAnswer(
+                        document.getDocId(), ratio.numeratorKey(), parsed.scope()),
+                year);
+        Optional<ExtractedFactEntity> denominator = usableFactOfYear(
+                factRepository.findForAnswer(
+                        document.getDocId(), ratio.denominatorKey(), parsed.scope()),
+                year);
+        if (numerator.isEmpty() || denominator.isEmpty()) {
+            return Optional.empty();
+        }
+        BigDecimal bottom = new BigDecimal(denominator.get().getNormalizedValue());
+        if (bottom.signum() == 0) {
+            return Optional.empty();
+        }
+        BigDecimal top = new BigDecimal(numerator.get().getNormalizedValue());
+        return Optional.of(new RatioValue(document, numerator.get(), denominator.get(),
+                top.multiply(BigDecimal.valueOf(100)).divide(bottom, SCALE, RoundingMode.HALF_UP)));
+    }
+
+    /**
+     * 같은 해 두 기업의 비율을 견준다.
+     *
+     * <p>한 기업이라도 계산할 수 없으면 답변 불가다. 계산된 쪽만 내보내면 모델이 나머지를
+     * 지어낼 여지가 생긴다.
+     */
+    private AnswerHandlerResult ratioCorpComparison(FinancialQuestion parsed) {
+        FinancialRatio ratio = parsed.ratio();
+        if (parsed.targetYear() == null) {
+            return AnswerHandlerResult.unavailable(
+                    "비율 비교 질문으로 분류", missingPartsOf(parsed));
+        }
+        String searchSummary = "%s·%d년·%s·%s기준 비교 식별".formatted(
+                joinCorpNames(parsed.corpNames()), parsed.targetYear(),
+                ratio.label(), scopeText(parsed.scope()));
+
+        Map<String, RatioValue> values = new LinkedHashMap<>();
+        for (String corpName : parsed.corpNames()) {
+            Optional<RatioValue> value = ratioAt(parsed, corpName, parsed.targetYear());
+            if (value.isEmpty()) {
+                return AnswerHandlerResult.unavailable(
+                        searchSummary + " → %s 계산 불가".formatted(corpName),
+                        "%s의 %d년 %s%s 계산할 자료를 찾지 못해 비교할 수 없습니다".formatted(
+                                corpName, parsed.targetYear(), ratio.label(),
+                                KoreanParticle.object(ratio.label())));
+            }
+            values.put(corpName, value.get());
+        }
+
+        StringBuilder summary = new StringBuilder(searchSummary);
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        for (Map.Entry<String, RatioValue> entry : values.entrySet()) {
+            RatioValue value = entry.getValue();
+            summary.append(" → %s %s=%s/%s×100=%s%%".formatted(
+                    entry.getKey(), ratio.label(),
+                    new BigDecimal(value.numerator().getNormalizedValue()).toPlainString(),
+                    new BigDecimal(value.denominator().getNormalizedValue()).toPlainString(),
+                    value.percent().toPlainString()));
+            addEvidence(evidences, value.document(), value.numerator());
+            addEvidence(evidences, value.document(), value.denominator());
+        }
+        appendRatioGap(summary, values, ratio);
+        appendScopeNote(summary, parsed);
+        return AnswerHandlerResult.of(evidences, summary.toString());
+    }
+
+    /** 가장 높은 곳과 가장 낮은 곳의 차이를 %p로 밝힌다. */
+    private static void appendRatioGap(
+            StringBuilder summary, Map<String, RatioValue> values, FinancialRatio ratio) {
+        Map.Entry<String, RatioValue> largest = null;
+        Map.Entry<String, RatioValue> smallest = null;
+        for (Map.Entry<String, RatioValue> entry : values.entrySet()) {
+            if (largest == null || entry.getValue().percent().compareTo(largest.getValue().percent()) > 0) {
+                largest = entry;
+            }
+            if (smallest == null || entry.getValue().percent().compareTo(smallest.getValue().percent()) < 0) {
+                smallest = entry;
+            }
+        }
+        if (largest == null || largest.getKey().equals(smallest.getKey())) {
+            return;
+        }
+        summary.append(" → %s가 %s보다 %s %s%%p 높음".formatted(
+                largest.getKey(), smallest.getKey(), ratio.label(),
+                largest.getValue().percent().subtract(smallest.getValue().percent()).toPlainString()));
+    }
+
+    /**
+     * 한 기업의 두 해 비율을 견준다. 비율의 증감은 %p로 밝힌다.
+     *
+     * <p>대상 연도 비율은 이미 고른 문서에서 계산한 것을 쓴다. 기준 연도는 그 해를 담은
+     * 보고서를 따로 찾는다. 표가 세 기간뿐이라 문서가 달라질 수 있다.
+     */
+    private AnswerHandlerResult ratioYearComparison(
+            FinancialQuestion parsed,
+            DisclosureDocumentEntity document,
+            ExtractedFactEntity numerator,
+            String searchSummary
+    ) {
+        FinancialRatio ratio = parsed.ratio();
+        AnswerHandlerResult target = ratio(parsed, document, numerator, searchSummary);
+        if (!target.isAnswerable()) {
+            return target;
+        }
+        Optional<RatioValue> base = ratioAt(parsed, parsed.corpName(), parsed.baseYear());
+        if (base.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    target.evidences(),
+                    target.processSummary() + " → 비교 기준 연도(%d년) 계산 불가".formatted(parsed.baseYear()),
+                    "%d년 %s%s 확인했지만 %d년 %s%s 계산할 자료를 찾지 못했습니다".formatted(
+                            parsed.targetYear(), ratio.label(),
+                            KoreanParticle.object(ratio.label()),
+                            parsed.baseYear(), ratio.label(),
+                            KoreanParticle.object(ratio.label())));
+        }
+        RatioValue baseValue = base.get();
+        Optional<RatioValue> targetValue = ratioAt(parsed, parsed.corpName(), parsed.targetYear());
+        if (targetValue.isEmpty()) {
+            return target;
+        }
+        BigDecimal difference = targetValue.get().percent().subtract(baseValue.percent());
+
+        StringBuilder summary = new StringBuilder(target.processSummary())
+                .append(" → %d년 %s=%s/%s×100=%s%%".formatted(
+                        parsed.baseYear(), ratio.label(),
+                        new BigDecimal(baseValue.numerator().getNormalizedValue()).toPlainString(),
+                        new BigDecimal(baseValue.denominator().getNormalizedValue()).toPlainString(),
+                        baseValue.percent().toPlainString()));
+        if (baseValue.document() != document) {
+            summary.append("(%d년은 '%s'(%s)에서 확인)".formatted(
+                    parsed.baseYear(), baseValue.document().getReportNm(),
+                    baseValue.document().getRceptDt()));
+        }
+        summary.append(" → 증감=%s%%p(%s-%s)".formatted(
+                difference.toPlainString(),
+                targetValue.get().percent().toPlainString(),
+                baseValue.percent().toPlainString()));
+
+        List<RetrievedEvidence> evidences = new ArrayList<>(target.evidences());
+        addEvidence(evidences, baseValue.document(), baseValue.numerator());
+        addEvidence(evidences, baseValue.document(), baseValue.denominator());
+        return AnswerHandlerResult.of(evidences, summary.toString());
+    }
+
     private Optional<DisclosureDocumentEntity> selectDocument(FinancialQuestion parsed) {
         return selectDocument(parsed, parsed.corpName());
     }
 
     private Optional<DisclosureDocumentEntity> selectDocument(
             FinancialQuestion parsed, String corpName) {
+        return selectDocument(parsed, corpName, parsed.targetYear());
+    }
+
+    private Optional<DisclosureDocumentEntity> selectDocument(
+            FinancialQuestion parsed, String corpName, Integer year) {
         List<DisclosureDocumentEntity> documents =
                 documentRepository.findByCorpNameAndDocGroupAndBaseYearOrderByRceptDtDescRceptNoDesc(
-                        corpName, DocGroup.PERIODIC, parsed.targetYear());
+                        corpName, DocGroup.PERIODIC, year);
         if (!documents.isEmpty()) {
             // 연간 수치를 묻는 질문이므로 사업보고서를 우선하고, 같은 조건이면 최신 접수분을 쓴다.
             return documents.stream()
                     .min(Comparator.comparingInt(
                             document -> "annual".equals(document.getDocSubtype()) ? 0 : 1));
         }
-        return reportContainingYear(parsed, corpName);
+        return reportContainingYear(parsed, corpName, year);
     }
 
     /**

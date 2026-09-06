@@ -129,6 +129,34 @@ class FinancialAnswerHandlerIT {
     }
 
     @Test
+    void comparesARatioBetweenTwoCompanies() {
+        AnswerHandlerResult result =
+                answer("삼성전자와 삼성전기의 2024년 연결기준 영업이익률을 비교하면?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        // 비율마다 분자·분모 두 건씩, 두 기업이면 네 건이다.
+        // 비율마다 분자·분모 두 건씩, 두 기업이면 네 건이다.
+        assertThat(result.evidences()).hasSize(4);
+        assertThat(result.processSummary())
+                .contains("삼성전자와 삼성전기·2024년·영업이익률·연결기준 비교 식별")
+                .contains("삼성전자 영업이익률=32725961000000/300870903000000×100=10.88%")
+                .contains("삼성전기 영업이익률=610000000000/10933516000000×100=5.58%")
+                // 비율 차이는 %p다. 금액 차이처럼 적으면 다른 뜻이 된다.
+                .contains("삼성전자가 삼성전기보다 영업이익률 5.30%p 높음");
+    }
+
+    @Test
+    void refusesARatioComparisonWhenOneCompanyCannotBeComputed() {
+        AnswerHandlerResult result =
+                answer("삼성전자와 한미반도체의 2024년 연결기준 영업이익률을 비교하면?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason())
+                .contains("한미반도체")
+                .contains("비교할 수 없습니다");
+    }
+
+    @Test
     void keepsTheOrderTheQuestionUses() {
         AnswerHandlerResult result =
                 answer("삼성전기와 삼성전자의 2024년 연결기준 매출액을 비교하면?");
@@ -370,6 +398,10 @@ class FinancialAnswerHandlerIT {
         fixture.row("가. 요약연결재무정보", "매출액", "제51기: 10,933,516",
                 "revenue", Scope.CONSOLIDATED,
                 new String[]{"10,933,516"}, new String[]{"10933516000000"}, new int[]{2024});
+        // 비율 비교를 확인하려면 분모(매출액)만으로는 모자라다.
+        fixture.row("가. 요약연결재무정보", "영업이익", "제51기: 610,000",
+                "operating_profit", Scope.CONSOLIDATED,
+                new String[]{"610,000"}, new String[]{"610000000000"}, new int[]{2024});
         return fixture.build();
     }
 

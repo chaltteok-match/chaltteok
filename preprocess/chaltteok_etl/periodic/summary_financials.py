@@ -123,9 +123,12 @@ NO_DATA_PATTERNS = (
     re.compile(r"해당\s*사항\s*이?\s*없"),
     re.compile(r"소규모\s*기업"),
     re.compile(r"작성하지\s*아니"),
-    # 표 대신 다른 곳을 보라고만 적은 문서. 이 섹션에 값이 없는 것이 맞다.
-    re.compile(r"(?:참조|참고)하시기\s*바랍니다"),
 )
+
+# 표 대신 다른 곳을 보라고만 적은 문서. 이 문구는 표 아래 주석에도 흔해서,
+# 안내 문구만 있는 짧은 섹션에서만 값 없음으로 본다. 표가 있는 섹션은 20~30KB다.
+REFERRAL_PATTERN = re.compile(r"(?:참조|참고)하시기\s*바랍니다")
+REFERRAL_MAX_CHARS = 1000
 
 SCOPE_BY_MARKER = {
     "연결": Scope.CONSOLIDATED,
@@ -294,20 +297,20 @@ def merge_split_header(rows: list[list[str]]) -> list[list[str]] | None:
     합친다. 그 밖에는 추측하지 않는다.
     """
     trimmed = [_trim(row) for row in rows]
-    for index in range(len(trimmed) - 2):
-        first = trimmed[index]
-        second = trimmed[index + 1]
-        if len(first) < 3 or len(second) != len(first) - 1:
-            return None
-        data = trimmed[index + 2 :]
-        if not data or not all(len(row) == len(first) for row in data if row):
-            return None
-        merged = [first[0]] + [
-            f"{first[column + 1]} {second[column]}".strip()
-            for column in range(len(second))
-        ]
-        return [merged] + data
-    return None
+    if len(trimmed) < 3:
+        return None
+    # 머리글은 표 맨 앞 두 줄이다. 중간에서 찾지 않는다 — 자료 줄 사이의 우연한 칸 수를
+    # 머리글로 오인하면 없는 컬럼을 만들어 낸다.
+    first, second, *data = trimmed
+    if len(first) < 3 or len(second) != len(first) - 1:
+        return None
+    if not data or not all(len(row) == len(first) for row in data if row):
+        return None
+    merged = [first[0]] + [
+        f"{first[column + 1]} {second[column]}".strip()
+        for column in range(len(second))
+    ]
+    return [merged] + data
 
 
 def _trim(row: list[str]) -> list[str]:
@@ -586,7 +589,12 @@ def _no_data_chunk(document, section: str, source_file: str, section_title: str)
     문서와 근거는 저장하고 fact만 만들지 않는다. 그 외에는 전처리 실패로 올린다.
     """
     body = dart_xml.clean(section)
-    if not any(pattern.search(body) for pattern in NO_DATA_PATTERNS):
+    referral_only = (
+        len(body) <= REFERRAL_MAX_CHARS and REFERRAL_PATTERN.search(body) is not None
+    )
+    if not referral_only and not any(
+        pattern.search(body) for pattern in NO_DATA_PATTERNS
+    ):
         raise PeriodicParseError(
             "요약재무정보 섹션에서 인식 가능한 표를 찾지 못했습니다 "
             f"(doc_id={document.doc_id}); 값 없음이라는 근거 문구도 없습니다"

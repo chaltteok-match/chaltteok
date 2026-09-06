@@ -219,6 +219,20 @@ def test_표가_없고_다른_곳을_참조하라고만_적은_섹션은_실패�
     assert result.evidence_chunks, "값이 없어도 근거는 남긴다"
 
 
+def test_표가_있는_섹션의_참조_주석은_값_없음으로_보지_않는다(tmp_path):
+    """`참조하시기 바랍니다`는 표 아래 주석에도 흔하다. 파싱 실패를 값 없음으로 감추면 안 된다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        "<TABLE><THEAD><TR><TH>구 분</TH><TH>알 수 없음</TH></TR></THEAD>"
+        "<TBODY>" + row_xml("자산총계", "514,531,948") + "</TBODY></TABLE>"
+        "<P>※ 자세한 사항은 연결재무제표 주석을 참조하시기 바랍니다.</P>"
+        + "<P>" + "가" * 1200 + "</P>"
+    )
+    with pytest.raises(PeriodicParseError):
+        parse(tmp_path, body)
+
+
 def test_작성을_생략한다고_적은_섹션도_실패가_아니다(tmp_path):
     """우리기술 분기보고서는 '작성을 생략합니다'라고 적는다."""
     body = "<P>※ 기업공시서식 작성기준에 따라 분기보고서의 경우 작성을 생략합니다.</P>"

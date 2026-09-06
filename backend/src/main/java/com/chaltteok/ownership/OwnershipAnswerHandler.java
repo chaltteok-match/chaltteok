@@ -133,10 +133,24 @@ public class OwnershipAnswerHandler implements AnswerHandler {
             }
             documents = SingleReportDateDocuments.uniqueDay(scoped);
             if (documents.isEmpty()) {
-                return AnswerHandlerResult.unavailable(
-                        searchSummary + " → 공시일 " + scoped.size() + "건",
-                        "여러 차례 대량보유 공시가 있어 공시일을 특정하지 못했습니다"
-                );
+                // 대량보유는 보유자마다 계속 갱신되는 상태 보고다. 여러 건이 있는 것이 정상이고,
+                // 가장 최근 보고가 곧 최신 상태다. 유상증자·자기주식·사채는 건마다 다른 사건이라
+                // 최신을 고를 근거가 없지만, 여기서는 있다.
+                LocalDate latest = scoped.stream()
+                        .map(DisclosureDocumentEntity::getRceptDt)
+                        .max(LocalDate::compareTo)
+                        .orElseThrow();
+                documents = SingleReportDateDocuments.uniqueDay(
+                        scoped.stream()
+                                .filter(document -> latest.equals(document.getRceptDt()))
+                                .toList());
+                if (documents.isEmpty()) {
+                    return AnswerHandlerResult.unavailable(
+                            searchSummary + " → 공시일 " + scoped.size() + "건",
+                            "여러 차례 대량보유 공시가 있어 공시일을 특정하지 못했습니다"
+                    );
+                }
+                searchSummary += " → 공시일 " + scoped.size() + "건 중 최신 " + latest + " 사용";
             }
         }
         List<Candidate> candidates = candidatesOf(preferCorrections(documents), parsed);
@@ -271,11 +285,28 @@ public class OwnershipAnswerHandler implements AnswerHandler {
         };
     }
 
+    /**
+     * 지분공시 질문인지. 서식 이름을 적지 않는 질문이 훨씬 흔하다.
+     *
+     * <p>{@code 대량보유상황보고서}라고 쓰는 사람은 드물다. 서식 이름만 받으면 지분공시
+     * 1,083건이 가장 자연스러운 물음에 답하지 못한다. 파서가 이미 아는 항목 표현을 그대로
+     * 받아들인다.
+     *
+     * <p>{@code 최대주주}는 일부러 받지 않는다. 대량보유상황보고서는 <b>5% 이상 보유자를
+     * 보고할 뿐</b> 최대주주를 정하지 않는다. 받으면 보고자 중 하나를 최대주주라고 답하게 된다.
+     */
     static boolean looksLikeHolding(String question) {
-        return question.contains("대량보유")
-                || question.contains("대량 보유")
-                || question.contains("지분공시")
-                || question.contains("보유상황");
+        return HOLDING_MARKERS.stream().anyMatch(compact(question)::contains);
+    }
+
+    private static final List<String> HOLDING_MARKERS = List.of(
+            "대량보유", "지분공시", "보유상황",
+            "지분율", "지분", "보유비율", "보유주식",
+            "대표보고자", "보고자", "보유자", "보유목적", "보고사유", "보고구분");
+
+    /** 띄어쓰기 차이를 무시한다. {@code 대량 보유}와 {@code 대량보유}를 같게 본다. */
+    private static String compact(String question) {
+        return question.replaceAll("\\s+", "");
     }
 
     private List<Candidate> candidatesOf(

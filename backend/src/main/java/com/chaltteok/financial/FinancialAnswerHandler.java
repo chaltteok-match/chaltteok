@@ -144,9 +144,71 @@ public class FinancialAnswerHandler implements AnswerHandler {
                     unavailableReason(targetFact.getExtractionStatus()));
         }
 
+        if (parsed.isRatio()) {
+            return ratio(parsed, document, targetFact, searchSummary);
+        }
         return parsed.isComparison()
                 ? comparison(parsed, document, facts, targetFact, searchSummary)
                 : single(parsed, document, targetFact, searchSummary);
+    }
+
+    /**
+     * 표에 없는 비율을 두 값으로 계산한다.
+     *
+     * <p>분자는 이미 찾아 둔 수치다. 분모는 같은 문서·같은 기준·같은 해에서 찾는다.
+     * 문서를 섞지 않으므로 단위와 연결·별도 기준이 어긋나지 않는다.
+     * 분모가 없거나 0이면 계산하지 않고 무엇이 없는지 밝힌다.
+     */
+    private AnswerHandlerResult ratio(
+            FinancialQuestion parsed,
+            DisclosureDocumentEntity document,
+            ExtractedFactEntity numerator,
+            String searchSummary
+    ) {
+        FinancialRatio ratio = parsed.ratio();
+        Optional<ExtractedFactEntity> found = usableFactOfYear(
+                factRepository.findForAnswer(
+                        document.getDocId(), ratio.denominatorKey(), parsed.scope()),
+                parsed.targetYear());
+        if (found.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    List.of(evidenceOf(document, numerator)),
+                    searchSummary + " → 분모(%s) 수치 없음".formatted(ratio.denominatorLabel()),
+                    "'%s'에서 %d년 %s%s 찾지 못해 %s%s 계산할 수 없습니다".formatted(
+                            document.getReportNm(), parsed.targetYear(),
+                            ratio.denominatorLabel(),
+                            KoreanParticle.object(ratio.denominatorLabel()),
+                            ratio.label(), KoreanParticle.object(ratio.label())));
+        }
+        ExtractedFactEntity denominator = found.get();
+
+        BigDecimal top = new BigDecimal(numerator.getNormalizedValue());
+        BigDecimal bottom = new BigDecimal(denominator.getNormalizedValue());
+        if (bottom.signum() == 0) {
+            return AnswerHandlerResult.unavailable(
+                    List.of(evidenceOf(document, numerator), evidenceOf(document, denominator)),
+                    searchSummary + " → 분모(%s)가 0".formatted(ratio.denominatorLabel()),
+                    "%d년 %s%s 0이라 %s%s 계산할 수 없습니다".formatted(
+                            parsed.targetYear(), ratio.denominatorLabel(),
+                            KoreanParticle.subject(ratio.denominatorLabel()),
+                            ratio.label(), KoreanParticle.object(ratio.label())));
+        }
+        BigDecimal percent = top.multiply(BigDecimal.valueOf(100))
+                .divide(bottom, SCALE, RoundingMode.HALF_UP);
+
+        StringBuilder summary = new StringBuilder(searchSummary)
+                .append(" → %s %s, %s %s 확인".formatted(
+                        ratio.numeratorLabel(), KoreanAmountFormatter.format(numerator.getNormalizedValue()),
+                        ratio.denominatorLabel(), KoreanAmountFormatter.format(denominator.getNormalizedValue())))
+                .append(" → %s=%s/%s×100=%s%%".formatted(
+                        ratio.label(), top.toPlainString(), bottom.toPlainString(),
+                        percent.toPlainString()));
+        appendScopeNote(summary, parsed);
+
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        addEvidence(evidences, document, numerator);
+        addEvidence(evidences, document, denominator);
+        return AnswerHandlerResult.of(evidences, summary.toString());
     }
 
     /**

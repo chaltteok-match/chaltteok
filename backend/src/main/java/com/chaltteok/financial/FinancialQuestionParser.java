@@ -105,17 +105,20 @@ final class FinancialQuestionParser {
      */
     private static final Set<String> CONFUSABLE_TERMS = Set.of(
             "매출총이익", "매출총이익률", "매출원가", "매출원가율", "매출채권", "매출채권회전율",
-            "매출액영업이익률", "매출액순이익률", "매출액증가율", "매출증가율", "매출비중", "매출구성",
-            "영업이익률", "영업이익증가율", "영업이익율",
+            "매출액증가율", "매출증가율", "매출비중", "매출구성",
+            "영업이익증가율",
             "주당순이익", "기본주당순이익", "희석주당순이익",
-            "순이익률", "순이익율", "순이익증가율",
-            "자기자본비율", "자기자본이익률", "자기자본순이익률", "자기자본증가율", "자기자본회전율",
-            "총자산회전율", "총자산이익률", "총자산순이익률", "총자산증가율",
-            "부채비율", "부채총계증가율", "자산총계증가율", "자본총계증가율");
+            "순이익증가율",
+            "자기자본증가율", "자기자본회전율",
+            "총자산회전율", "총자산증가율",
+            "부채총계증가율", "자산총계증가율", "자본총계증가율");
 
     /** 인정 표현과 혼동 표현을 함께 두고 가장 긴 것을 고른다. */
     private static final List<String> ALL_TERMS = Stream
-            .concat(ITEM_KEYWORDS.keySet().stream(), CONFUSABLE_TERMS.stream())
+            .of(ITEM_KEYWORDS.keySet().stream(),
+                    CONFUSABLE_TERMS.stream(),
+                    FinancialRatio.keywordMap().keySet().stream())
+            .flatMap(terms -> terms)
             .sorted(Comparator.comparingInt(String::length).reversed())
             .toList();
 
@@ -129,8 +132,14 @@ final class FinancialQuestionParser {
         // 가장 긴 표현이 혼동 표현이면 항목을 만들지 않는다.
         // '주당순이익'에 당기순이익을, '총자산회전율'에 자산총계를 답하지 않기 위해서다.
         String matched = ALL_TERMS.stream().filter(text::contains).findFirst().orElse(null);
+        FinancialRatio ratio = matched == null ? null : FinancialRatio.keywordMap().get(matched);
         String itemLabel = matched != null && ITEM_KEYWORDS.containsKey(matched) ? matched : null;
         String factKey = itemLabel == null ? null : ITEM_KEYWORDS.get(itemLabel);
+        if (ratio != null) {
+            // 비율도 정기공시 항목을 묻는 질문이다. 분자를 대표 항목으로 두어 Handler가 나선다.
+            itemLabel = ratio.label();
+            factKey = ratio.numeratorKey();
+        }
 
         List<Integer> years = years(text);
         Integer targetYear = years.isEmpty() ? null : years.get(years.size() - 1);
@@ -157,7 +166,7 @@ final class FinancialQuestionParser {
                 && joinsTwoUnknownNames(text);
 
         return new FinancialQuestion(mentioned, targetYear, baseYear, factKey, itemLabel,
-                scope, separate || consolidated, wantsCorpRanking, lostCounterpart);
+                scope, separate || consolidated, wantsCorpRanking, lostCounterpart, ratio);
     }
 
 

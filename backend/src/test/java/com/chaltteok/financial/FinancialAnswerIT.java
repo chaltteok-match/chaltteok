@@ -212,6 +212,42 @@ class FinancialAnswerIT {
     }
 
     @Test
+    void computesARatioFromTwoValuesAndShowsBothAsEvidence() throws Exception {
+        // 영업이익 32,725,961 / 매출액 300,870,903 = 10.88%
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 2024년 연결기준 영업이익률은 10.88%입니다.", "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-RATIO")
+                        .param("question", "삼성전자의 2024년 연결기준 영업이익률은?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(allOf(
+                        containsString("영업이익 32조 7,259억원"),
+                        containsString("매출액 300조 8,709억원"),
+                        containsString(
+                                "영업이익률=32725961000000/300870903000000×100=10.88%")
+                )))
+                // 분자와 분모의 근거가 모두 나가야 한다.
+                .andExpect(jsonPath("$.retrieved_context").value(allOf(
+                        containsString("32,725,961"),
+                        containsString("300,870,903")
+                )))
+                .andExpect(jsonPath("$.answer").value(containsString("10.88%")));
+    }
+
+    @Test
+    void refusesTheRatioWhenTheDenominatorIsMissing() throws Exception {
+        // 이 픽스처에는 2022년 매출액이 있지만 2021년 영업이익은 없다.
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-RATIO-2")
+                        .param("question", "삼성전자의 2020년 연결기준 부채비율은?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("제공된 공시 데이터에서는 확인할 수 없습니다."));
+
+        verify(hcxClient, never()).generate(any(HcxPrompt.class));
+    }
+
+    @Test
     void returnsUnavailableAnswerWithNormalSchemaForMissingYear() throws Exception {
         mockMvc.perform(get("/answer")
                         .param("question_id", "Q-PERIODIC-003")

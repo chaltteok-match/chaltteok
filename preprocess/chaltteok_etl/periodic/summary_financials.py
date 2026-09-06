@@ -119,10 +119,16 @@ MISSING_VALUES = {"", "-", "－", "—", "–", "‐", "n/a", "N/A", "해당사�
 NO_DATA_PATTERNS = (
     re.compile(r"기재하지\s*아니"),
     re.compile(r"기재를?\s*생략"),
+    re.compile(r"작성을?\s*생략"),
     re.compile(r"해당\s*사항\s*이?\s*없"),
     re.compile(r"소규모\s*기업"),
     re.compile(r"작성하지\s*아니"),
 )
+
+# 표 대신 다른 곳을 보라고만 적은 문서. 이 문구는 표 아래 주석에도 흔해서,
+# 안내 문구만 있는 짧은 섹션에서만 값 없음으로 본다. 표가 있는 섹션은 20~30KB다.
+REFERRAL_PATTERN = re.compile(r"(?:참조|참고)하시기\s*바랍니다")
+REFERRAL_MAX_CHARS = 1000
 
 SCOPE_BY_MARKER = {
     "연결": Scope.CONSOLIDATED,
@@ -276,6 +282,56 @@ def resolve_columns(
     return None
 
 
+def merge_split_header(rows: list[list[str]]) -> list[list[str]] | None:
+    """머리글이 두 줄로 쪼개진 표를 한 줄로 합친다. 합칠 수 없으면 None.
+
+    한국항공우주 분기보고서처럼 기수와 연도를 위아래로 나눠 적은 표가 있다::
+
+        구 분  | 2024년 3분기 | 제25기   | 제24기
+        (제26기) | 2023년말    | 2022년말
+        [유동자산] | 4,952,… | 4,680,… | 5,389,…
+
+        → 구 분 | 2024년 3분기 (제26기) | 제25기 2023년말 | 제24기 2022년말
+
+    둘째 줄이 첫째 줄보다 칸이 하나 적고, 뒤따르는 자료 줄이 첫째 줄과 칸 수가 같을 때만
+    합친다. 그 밖에는 추측하지 않는다.
+    """
+    trimmed = [_trim(row) for row in rows]
+    if len(trimmed) < 3:
+        return None
+    # 머리글은 표 맨 앞 두 줄이다. 중간에서 찾지 않는다 — 자료 줄 사이의 우연한 칸 수를
+    # 머리글로 오인하면 없는 컬럼을 만들어 낸다.
+    first, second, *data = trimmed
+    if len(first) < 3 or len(second) != len(first) - 1:
+        return None
+    if not data or not all(len(row) == len(first) for row in data if row):
+        return None
+    merged = [first[0]] + [
+        f"{first[column + 1]} {second[column]}".strip()
+        for column in range(len(second))
+    ]
+    return [merged] + data
+
+
+def _trim(row: list[str]) -> list[str]:
+    cells = list(row)
+    while cells and not cells[-1]:
+        cells.pop()
+    return cells
+
+
+def columns_fit(
+    rows: list[list[str]], resolved: tuple[list[PeriodColumn], int] | None
+) -> bool:
+    """해석한 컬럼 수가 자료 줄의 칸 수와 맞는지. 맞지 않으면 값을 한 줄도 읽지 못한다."""
+    if resolved is None:
+        return False
+    columns, header_index = resolved
+    return any(
+        len(_trim(row)) == len(columns) + 1 for row in rows[header_index + 1 :]
+    )
+
+
 def scope_from_header(column_labels: list[str]) -> Scope | None:
     """표 머리글이 밝힌 연결·별도 기준.
 
@@ -412,9 +468,17 @@ def parse_summary_financials(
         else:
             table_unit = last_unit
 
-        resolved = resolve_columns(
-            table.rows, base_year=base_year, base_month=base_month
-        )
+        rows = table.rows
+        resolved = resolve_columns(rows, base_year=base_year, base_month=base_month)
+        if not columns_fit(rows, resolved):
+            # 머리글이 두 줄로 쪼개진 표다. 합쳐서 한 번 더 해석한다.
+            merged = merge_split_header(table.rows)
+            if merged is not None:
+                retry = resolve_columns(
+                    merged, base_year=base_year, base_month=base_month
+                )
+                if columns_fit(merged, retry):
+                    rows, resolved = merged, retry
         if resolved is None:
             continue
         columns, header_index = resolved
@@ -425,7 +489,7 @@ def parse_summary_financials(
             scope = header_scope
         multiplier = UNIT_MULTIPLIERS.get(table_unit or "")
 
-        for row in table.rows[header_index + 1 :]:
+        for row in rows[header_index + 1 :]:
             cells = list(row)
             while cells and not cells[-1]:
                 cells.pop()
@@ -525,7 +589,12 @@ def _no_data_chunk(document, section: str, source_file: str, section_title: str)
     문서와 근거는 저장하고 fact만 만들지 않는다. 그 외에는 전처리 실패로 올린다.
     """
     body = dart_xml.clean(section)
-    if not any(pattern.search(body) for pattern in NO_DATA_PATTERNS):
+    referral_only = (
+        len(body) <= REFERRAL_MAX_CHARS and REFERRAL_PATTERN.search(body) is not None
+    )
+    if not referral_only and not any(
+        pattern.search(body) for pattern in NO_DATA_PATTERNS
+    ):
         raise PeriodicParseError(
             "요약재무정보 섹션에서 인식 가능한 표를 찾지 못했습니다 "
             f"(doc_id={document.doc_id}); 값 없음이라는 근거 문구도 없습니다"

@@ -175,6 +175,73 @@ def test_기수_표시가_기말에_바로_붙어도_읽는다(tmp_path):
     }
 
 
+def test_머리글이_두_줄로_쪼개진_표를_합쳐서_읽는다(tmp_path):
+    """한국항공우주 분기보고서는 기수와 연도를 위아래로 나눠 적는다.
+
+    한 줄만 보면 컬럼이 둘로 잡혀 자료 줄의 칸 수와 어긋나고, 값을 한 줄도 못 읽는다.
+    """
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 원)</TD></TR></TBODY></TABLE>"
+        "<TABLE><THEAD>"
+        "<TR><TH>구 분</TH><TH>2024년 3분기</TH><TH>제25기</TH><TH>제24기</TH></TR>"
+        "<TR><TH>(제26기)</TH><TH>2023년말</TH><TH>2022년말</TH></TR>"
+        "</THEAD><TBODY>"
+        + row_xml("자산총계", "7,472,350,543,793", "7,139,576,928,721", "7,772,406,693,424")
+        + row_xml("매출액", "2,538,940,842,277", "3,819,344,382,446", "2,786,888,282,702")
+        + "</TBODY></TABLE>"
+    )
+    result = parse(
+        tmp_path, body, base_year=2024, base_month=9, doc_subtype="quarter"
+    )
+
+    assets = {fact.as_of_date: fact.normalized_value for fact in facts_by_key(result, "total_assets")}
+    assert assets == {
+        date(2024, 9, 30): "7472350543793",
+        date(2023, 12, 31): "7139576928721",
+        date(2022, 12, 31): "7772406693424",
+    }
+    # 분기 누적은 연간 값이 아니다. 기간이 그대로 남아야 Handler가 걸러 낸다.
+    revenue = facts_by_key(result, "revenue")
+    current = next(fact for fact in revenue if fact.period_end == date(2024, 9, 30))
+    assert current.period_start == date(2024, 1, 1)
+
+
+def test_표가_없고_다른_곳을_참조하라고만_적은_섹션은_실패가_아니다(tmp_path):
+    """우리기술 반기보고서는 표 없이 '참조하시기 바랍니다'라고만 적는다."""
+    body = (
+        "<P>※ 자세한 사항은 동 공시에 첨부하는 반기연결검토보고서 및 "
+        "반기별도검토보고서를 참조하시기 바랍니다.</P>"
+    )
+    result = parse(tmp_path, body)
+
+    assert result.extracted_facts == []
+    assert result.evidence_chunks, "값이 없어도 근거는 남긴다"
+
+
+def test_표가_있는_섹션의_참조_주석은_값_없음으로_보지_않는다(tmp_path):
+    """`참조하시기 바랍니다`는 표 아래 주석에도 흔하다. 파싱 실패를 값 없음으로 감추면 안 된다."""
+    body = (
+        "<P>가. 요약연결재무정보</P>"
+        "<TABLE><TBODY><TR><TD>(단위 : 백만원)</TD></TR></TBODY></TABLE>"
+        "<TABLE><THEAD><TR><TH>구 분</TH><TH>알 수 없음</TH></TR></THEAD>"
+        "<TBODY>" + row_xml("자산총계", "514,531,948") + "</TBODY></TABLE>"
+        "<P>※ 자세한 사항은 연결재무제표 주석을 참조하시기 바랍니다.</P>"
+        + "<P>" + "가" * 1200 + "</P>"
+    )
+    with pytest.raises(PeriodicParseError):
+        parse(tmp_path, body)
+
+
+def test_작성을_생략한다고_적은_섹션도_실패가_아니다(tmp_path):
+    """우리기술 분기보고서는 '작성을 생략합니다'라고 적는다."""
+    body = "<P>※ 기업공시서식 작성기준에 따라 분기보고서의 경우 작성을 생략합니다.</P>"
+    result = parse(tmp_path, body)
+
+    assert result.extracted_facts == []
+    assert result.evidence_chunks
+
+
 def test_컬럼이_오름차순이어도_가장_큰_기수를_당기로_본다(tmp_path):
     body = (
         "<P>가. 요약연결재무정보</P>"

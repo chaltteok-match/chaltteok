@@ -25,7 +25,8 @@ public record FinancialQuestion(
         Scope scope,
         boolean scopeExplicit,
         boolean wantsCorpRanking,
-        boolean lostCounterpart
+        boolean lostCounterpart,
+        FinancialRatio ratio
 ) {
 
     public FinancialQuestion {
@@ -48,5 +49,16 @@ public record FinancialQuestion(
 
     public boolean isAnswerable() {
         return corpName() != null && targetYear != null && factKey != null;
+    }
+
+    /** 질문에 연도가 없어 다른 근거로 연도를 정했을 때 쓴다. */
+    public FinancialQuestion withTargetYear(Integer year) {
+        return new FinancialQuestion(corpNames, year, baseYear, factKey, itemLabel,
+                scope, scopeExplicit, wantsCorpRanking, lostCounterpart, ratio);
+    }
+
+    /** 표에 실린 값이 아니라 두 값으로 계산해야 하는 질문인지. */
+    public boolean isRatio() {
+        return ratio != null;
     }
 }

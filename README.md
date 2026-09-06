@@ -8,7 +8,7 @@
 
 | 항목 | 값 |
 | --- | --- |
-| Endpoint URL | *(서버 배포 후 기입)* |
+| Endpoint URL | `http://49.50.143.91/answer` |
 | 경로 | `GET /answer?question_id={id}&question={질문}` |
 | 응답 | `application/json`, 5개 필드 모두 문자열 |
 | 인증 | 없음 |

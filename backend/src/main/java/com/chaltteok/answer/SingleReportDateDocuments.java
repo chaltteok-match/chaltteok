@@ -22,7 +22,17 @@ public final class SingleReportDateDocuments {
     private SingleReportDateDocuments() {
     }
 
-    /** 연도가 있으면 그 해 접수일만 남긴다. 연도가 없으면 받은 목록을 그대로 둔다. */
+    /**
+     * 연도가 있으면 그 해 접수일만 남긴다. 연도가 없으면 받은 목록을 그대로 둔다.
+     *
+     * <p>정정본이 해를 넘겨 접수되면 접수일만 보고 자를 때 원본과 갈라진다. 갈라 놓으면
+     * {@code 2024년}으로 물었을 때 <b>정정 전 값</b>을 답하게 된다. 실제로 그런 공시가 있다
+     * (LG씨엔에스 유상증자: 원본 2024-12-05, 정정 2025-01-17).
+     *
+     * <p>그래서 그 해 원본이 <b>하나뿐이고</b> 그 뒤에 다른 원본이 없을 때만, 해를 넘긴
+     * 정정본을 함께 남긴다. 그 사이에 다른 원본이 있으면 어느 사건의 정정인지 알 수 없어
+     * 잇지 않는다.
+     */
     public static List<DisclosureDocumentEntity> inYear(
             List<DisclosureDocumentEntity> documents,
             Integer year
@@ -30,10 +40,40 @@ public final class SingleReportDateDocuments {
         if (year == null) {
             return List.copyOf(documents);
         }
-        return documents.stream()
+        List<DisclosureDocumentEntity> kept = documents.stream()
                 .filter(document -> document.getRceptDt() != null
                         && document.getRceptDt().getYear() == year)
                 .toList();
+        List<DisclosureDocumentEntity> originals = kept.stream()
+                .filter(document -> !document.isCorrection())
+                .toList();
+        if (originals.size() != 1) {
+            return kept;
+        }
+        LocalDate filedOn = originals.getFirst().getRceptDt();
+        List<DisclosureDocumentEntity> later = documents.stream()
+                .filter(document -> document.getRceptDt() != null
+                        && document.getRceptDt().isAfter(filedOn)
+                        && document.getRceptDt().getYear() != year)
+                .toList();
+        List<DisclosureDocumentEntity> corrections =
+                later.stream().filter(DisclosureDocumentEntity::isCorrection).toList();
+        if (corrections.isEmpty()) {
+            return kept;
+        }
+        LocalDate lastCorrection = corrections.stream()
+                .map(DisclosureDocumentEntity::getRceptDt)
+                .max(LocalDate::compareTo)
+                .orElseThrow();
+        boolean anotherEventInBetween = later.stream()
+                .anyMatch(document -> !document.isCorrection()
+                        && !document.getRceptDt().isAfter(lastCorrection));
+        if (anotherEventInBetween) {
+            return kept;
+        }
+        List<DisclosureDocumentEntity> joined = new ArrayList<>(kept);
+        joined.addAll(corrections);
+        return List.copyOf(joined);
     }
 
     /**

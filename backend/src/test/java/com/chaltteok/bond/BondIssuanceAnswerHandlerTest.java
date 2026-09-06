@@ -119,8 +119,80 @@ class BondIssuanceAnswerHandlerTest {
     }
 
     @Test
-    void requiresReportDate() {
+    void readsIsoAndDotDatesAsWellAsKorean() {
+        DisclosureDocumentEntity document = document();
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtypeAndRceptDt(
+                eq("에코프로비엠"), eq(DocGroup.MAJOR), eq("전환사채권발행결정"), eq(REPORT_DATE)))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20230630000403"))
+                .thenReturn(List.of(fact(document, BondQuestionParser.FACE_AMOUNT_FACT_KEY,
+                        "권면총액", "440,000,000,000", "440000000000", "KRW", "원")));
+
+        for (String question : List.of(
+                "에코프로비엠이 2023-06-30 공시한 전환사채의 권면총액은 얼마인가?",
+                "에코프로비엠이 2023.06.30 공시한 전환사채의 권면총액은 얼마인가?")) {
+            AnswerHandlerResult result = handler.handle("Q-CB", question);
+            assertThat(result.isAnswerable()).as(question).isTrue();
+            assertThat(result.processSummary()).contains("공시일=2023-06-30");
+        }
+    }
+
+    @Test
+    void answersWithoutDateWhenTheCompanyFiledOnOneDayOnly() {
+        DisclosureDocumentEntity document = document();
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                eq("에코프로비엠"), eq(DocGroup.MAJOR), eq("전환사채권발행결정")))
+                .thenReturn(List.of(document));
+        when(factRepository.findByDocumentDocId("major_20230630000403"))
+                .thenReturn(List.of(fact(document, BondQuestionParser.FACE_AMOUNT_FACT_KEY,
+                        "권면총액", "440,000,000,000", "440000000000", "KRW", "원")));
+
         AnswerHandlerResult result = handler.handle("Q-CB", "에코프로비엠 전환사채의 권면총액은?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary()).contains("공시일 없이 단건 검색");
+    }
+
+    @Test
+    void doesNotGuessWhenTheCompanyFiledOnSeveralDays() {
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                eq("에코프로비엠"), eq(DocGroup.MAJOR), eq("전환사채권발행결정")))
+                .thenReturn(List.of(
+                        document(),
+                        document("major_20230403003950", "에코프로비엠", "전환사채권발행결정", false)));
+
+        AnswerHandlerResult result = handler.handle("Q-CB", "에코프로비엠 전환사채의 권면총액은?");
+
+        assertThat(result.isAnswerable()).isFalse();
+        assertThat(result.unavailableReason()).contains("공시일을 특정하지 못했습니다");
+    }
+
+    @Test
+    void narrowsByYearWhenOnlyAYearIsGiven() {
+        DisclosureDocumentEntity document = document();
+        DisclosureDocumentEntity nextYear =
+                document("major_20240515000101", "에코프로비엠", "전환사채권발행결정", false);
+        nextYear.setRceptDt(LocalDate.of(2024, 5, 15));
+        when(documentRepository.findByCorpNameAndDocGroupAndDocSubtype(
+                eq("에코프로비엠"), eq(DocGroup.MAJOR), eq("전환사채권발행결정")))
+                .thenReturn(List.of(document, nextYear));
+        when(factRepository.findByDocumentDocId("major_20230630000403"))
+                .thenReturn(List.of(fact(document, BondQuestionParser.FACE_AMOUNT_FACT_KEY,
+                        "권면총액", "440,000,000,000", "440000000000", "KRW", "원")));
+
+        AnswerHandlerResult result = handler.handle(
+                "Q-CB", "에코프로비엠이 2023년 공시한 전환사채의 권면총액은 얼마인가?");
+
+        assertThat(result.isAnswerable()).isTrue();
+        assertThat(result.processSummary()).contains("연도=2023 단건 검색");
+    }
+
+    @Test
+    void refusesWhenTheQuestionNamesAMonthWithoutADay() {
+        // 연월만 적힌 질문을 날짜 없는 단건 조회로 넘기면 다른 날 공시를 답할 수 있다.
+        AnswerHandlerResult result = handler.handle(
+                "Q-CB", "에코프로비엠이 2023년 6월 공시한 전환사채의 권면총액은 얼마인가?");
+
         assertThat(result.isAnswerable()).isFalse();
         assertThat(result.unavailableReason()).contains("공시일");
     }

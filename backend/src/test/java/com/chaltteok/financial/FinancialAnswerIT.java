@@ -183,6 +183,35 @@ class FinancialAnswerIT {
     }
 
     @Test
+    void comparesTwoYearsThatNoSingleReportHoldsTogether() throws Exception {
+        // 표는 세 기간뿐이라 2024년 보고서에 2021년이 없다. 2021년은 2023년 보고서에서 가져온다.
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 2024년 연결기준 매출액은 2021년 대비 7.61% 증가했습니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-FAR")
+                        .param("question",
+                                "삼성전자의 2024년 연결기준 매출액은 2021년 대비 얼마나 늘었는가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.think_trace").value(allOf(
+                        containsString("2024년 300조 8,709억원"),
+                        containsString("2021년 279조 6,047억원"),
+                        // 두 수치의 출처 보고서가 각각 드러나야 한다.
+                        containsString("사업보고서 (2024.12)"),
+                        containsString("2021년은 '사업보고서 (2023.12)'"),
+                        containsString(
+                                "증감률=(300870903000000-279604799000000)/279604799000000×100=7.61%")
+                )))
+                // 근거도 두 보고서에서 각각 나온다.
+                .andExpect(jsonPath("$.retrieved_context").value(allOf(
+                        containsString("300,870,903"),
+                        containsString("279,604,799")
+                )))
+                .andExpect(jsonPath("$.answer").value(containsString("7.61%")));
+    }
+
+    @Test
     void returnsUnavailableAnswerWithNormalSchemaForMissingYear() throws Exception {
         mockMvc.perform(get("/answer")
                         .param("question_id", "Q-PERIODIC-003")

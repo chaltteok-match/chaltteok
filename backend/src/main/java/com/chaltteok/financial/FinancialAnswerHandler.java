@@ -76,6 +76,18 @@ public class FinancialAnswerHandler implements AnswerHandler {
     @Transactional(readOnly = true)
     public AnswerHandlerResult handle(String questionId, String question) {
         FinancialQuestion initial = parse(question);
+        if (initial.isRatio() && (initial.isCorpComparison() || initial.isComparison())) {
+            // 비율 비교는 아직 계산하지 않는다. 여기서 막지 않으면 기업 간 비교는 분자 금액을
+            // 견주고, 연도 대비는 대상 연도 비율만 답한다. 둘 다 물어본 것과 다른 답이다.
+            return AnswerHandlerResult.unavailable(
+                    "비율 비교 질문으로 분류 → 아직 계산하지 않음",
+                    "%s%s 비교하는 것은 제공된 공시 데이터로 아직 계산하지 않습니다."
+                            .formatted(initial.itemLabel(),
+                                    KoreanParticle.object(initial.itemLabel()))
+                            + " 특정 연도의 %s%s 물어봐 주세요"
+                                    .formatted(initial.itemLabel(),
+                                            KoreanParticle.object(initial.itemLabel())));
+        }
         if (initial.wantsCorpRanking()) {
             // 근거를 댈 수 있는 것은 질문에 이름이 나온 기업뿐이다. 70개사를 훑어 순위를 매기면
             // 적재되지 않은 기업이 빠진 채 「가장 크다」고 답하게 된다.
@@ -145,9 +157,71 @@ public class FinancialAnswerHandler implements AnswerHandler {
                     unavailableReason(targetFact.getExtractionStatus()));
         }
 
+        if (parsed.isRatio()) {
+            return ratio(parsed, document, targetFact, searchSummary);
+        }
         return parsed.isComparison()
                 ? comparison(parsed, document, facts, targetFact, searchSummary)
                 : single(parsed, document, targetFact, searchSummary);
+    }
+
+    /**
+     * 표에 없는 비율을 두 값으로 계산한다.
+     *
+     * <p>분자는 이미 찾아 둔 수치다. 분모는 같은 문서·같은 기준·같은 해에서 찾는다.
+     * 문서를 섞지 않으므로 단위와 연결·별도 기준이 어긋나지 않는다.
+     * 분모가 없거나 0이면 계산하지 않고 무엇이 없는지 밝힌다.
+     */
+    private AnswerHandlerResult ratio(
+            FinancialQuestion parsed,
+            DisclosureDocumentEntity document,
+            ExtractedFactEntity numerator,
+            String searchSummary
+    ) {
+        FinancialRatio ratio = parsed.ratio();
+        Optional<ExtractedFactEntity> found = usableFactOfYear(
+                factRepository.findForAnswer(
+                        document.getDocId(), ratio.denominatorKey(), parsed.scope()),
+                parsed.targetYear());
+        if (found.isEmpty()) {
+            return AnswerHandlerResult.unavailable(
+                    List.of(evidenceOf(document, numerator)),
+                    searchSummary + " → 분모(%s) 수치 없음".formatted(ratio.denominatorLabel()),
+                    "'%s'에서 %d년 %s%s 찾지 못해 %s%s 계산할 수 없습니다".formatted(
+                            document.getReportNm(), parsed.targetYear(),
+                            ratio.denominatorLabel(),
+                            KoreanParticle.object(ratio.denominatorLabel()),
+                            ratio.label(), KoreanParticle.object(ratio.label())));
+        }
+        ExtractedFactEntity denominator = found.get();
+
+        BigDecimal top = new BigDecimal(numerator.getNormalizedValue());
+        BigDecimal bottom = new BigDecimal(denominator.getNormalizedValue());
+        if (bottom.signum() == 0) {
+            return AnswerHandlerResult.unavailable(
+                    List.of(evidenceOf(document, numerator), evidenceOf(document, denominator)),
+                    searchSummary + " → 분모(%s)가 0".formatted(ratio.denominatorLabel()),
+                    "%d년 %s%s 0이라 %s%s 계산할 수 없습니다".formatted(
+                            parsed.targetYear(), ratio.denominatorLabel(),
+                            KoreanParticle.subject(ratio.denominatorLabel()),
+                            ratio.label(), KoreanParticle.object(ratio.label())));
+        }
+        BigDecimal percent = top.multiply(BigDecimal.valueOf(100))
+                .divide(bottom, SCALE, RoundingMode.HALF_UP);
+
+        StringBuilder summary = new StringBuilder(searchSummary)
+                .append(" → %s %s, %s %s 확인".formatted(
+                        ratio.numeratorLabel(), KoreanAmountFormatter.format(numerator.getNormalizedValue()),
+                        ratio.denominatorLabel(), KoreanAmountFormatter.format(denominator.getNormalizedValue())))
+                .append(" → %s=%s/%s×100=%s%%".formatted(
+                        ratio.label(), top.toPlainString(), bottom.toPlainString(),
+                        percent.toPlainString()));
+        appendScopeNote(summary, parsed);
+
+        List<RetrievedEvidence> evidences = new ArrayList<>();
+        addEvidence(evidences, document, numerator);
+        addEvidence(evidences, document, denominator);
+        return AnswerHandlerResult.of(evidences, summary.toString());
     }
 
     /**

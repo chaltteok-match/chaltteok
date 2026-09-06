@@ -106,15 +106,13 @@ final class FinancialQuestionParser {
      */
     private static final Set<String> CONFUSABLE_TERMS = Set.of(
             "매출총이익", "매출총이익률", "매출원가", "매출원가율", "매출채권", "매출채권회전율",
-            "매출액영업이익률", "매출액순이익률", "매출액증가율", "매출증가율", "매출비중", "매출구성",
-            "영업이익률", "영업이익증가율", "영업이익율",
+            "매출액증가율", "매출증가율", "매출비중", "매출구성",
+            "영업이익증가율", "영업수익증가율",
             "주당순이익", "기본주당순이익", "희석주당순이익",
-            "순이익률", "순이익율", "순이익증가율",
-            "자기자본비율", "자기자본이익률", "자기자본순이익률", "자기자본증가율", "자기자본회전율",
-            "총자산회전율", "총자산이익률", "총자산순이익률", "총자산증가율",
-            "당기순이익률", "당기순이익율", "당기순이익증가율",
-            "영업수익률", "영업수익율", "영업수익증가율", "영업손익률", "영업손익율",
-            "부채비율", "부채총계증가율", "자산총계증가율", "자본총계증가율");
+            "순이익증가율", "당기순이익증가율",
+            "자기자본증가율", "자기자본회전율",
+            "총자산회전율", "총자산증가율",
+            "부채총계증가율", "자산총계증가율", "자본총계증가율");
 
     /**
      * 항목 뒤에 붙어 비율을 만드는 꼬리. 이 꼬리가 붙으면 금액이 아니다.
@@ -129,11 +127,22 @@ final class FinancialQuestionParser {
 
     /** 인정 표현과 혼동 표현을 함께 두고 가장 긴 것을 고른다. 공백은 지우고 견준다. */
     private static final List<String> ALL_TERMS = Stream
-            .concat(ITEM_KEYWORDS.keySet().stream(), CONFUSABLE_TERMS.stream())
+            .of(ITEM_KEYWORDS.keySet().stream(),
+                    CONFUSABLE_TERMS.stream(),
+                    FinancialRatio.keywordMap().keySet().stream())
+            .flatMap(terms -> terms)
             .map(FinancialQuestionParser::compact)
             .distinct()
             .sorted(Comparator.comparingInt(String::length).reversed())
             .toList();
+
+    /** 공백을 지운 비율 표. 항목 표와 같은 자리에서 견준다. */
+    private static final Map<String, FinancialRatio> COMPACT_RATIOS =
+            FinancialRatio.keywordMap().entrySet().stream()
+                    .collect(Collectors.toMap(
+                            entry -> compact(entry.getKey()),
+                            Map.Entry::getValue,
+                            (first, second) -> first));
 
     /** 공백을 지운 표기로 찾기 위한 표. {@code 자산 규모}와 {@code 자산규모}를 같게 본다. */
     private static final Map<String, String> COMPACT_ITEMS = ITEM_KEYWORDS.entrySet().stream()
@@ -154,11 +163,18 @@ final class FinancialQuestionParser {
         // 표현을 찾을 때만 공백을 지운다. `매출 증가율`과 `매출증가율`을 같게 보기 위해서다.
         String compacted = compact(text);
         String matched = ALL_TERMS.stream().filter(compacted::contains).findFirst().orElse(null);
+        FinancialRatio ratio = matched == null ? null : COMPACT_RATIOS.get(matched);
         String itemLabel = matched != null && COMPACT_ITEMS.containsKey(matched) ? matched : null;
-        if (itemLabel != null && hasRatioTail(compacted, itemLabel)) {
+        // 계산할 수 있는 비율이면 꼬리 검사를 하지 않는다. 그 꼬리가 곧 비율의 이름이다.
+        if (ratio == null && itemLabel != null && hasRatioTail(compacted, itemLabel)) {
             itemLabel = null;
         }
         String factKey = itemLabel == null ? null : COMPACT_ITEMS.get(itemLabel);
+        if (ratio != null) {
+            // 비율도 정기공시 항목을 묻는 질문이다. 분자를 대표 항목으로 두어 Handler가 나선다.
+            itemLabel = ratio.label();
+            factKey = ratio.numeratorKey();
+        }
 
         List<Integer> years = years(text);
         Integer targetYear = years.isEmpty() ? null : years.get(years.size() - 1);
@@ -185,7 +201,7 @@ final class FinancialQuestionParser {
                 && joinsTwoUnknownNames(text);
 
         return new FinancialQuestion(mentioned, targetYear, baseYear, factKey, itemLabel,
-                scope, separate || consolidated, wantsCorpRanking, lostCounterpart);
+                scope, separate || consolidated, wantsCorpRanking, lostCounterpart, ratio);
     }
 
 

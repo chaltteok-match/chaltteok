@@ -88,33 +88,60 @@ class FinancialQuestionParserTest {
     }
 
     @Test
-    void stillRefusesRatiosThatContainTheShorterNames() {
-        // 비율은 요약재무정보에 없다. 분자에 해당하는 금액을 비율인 것처럼 답하면 안 된다.
-        assertThat(parse("삼성전자의 2024년 순이익률은?").factKey()).isNull();
+    void stillRefusesTermsThatAreNeitherAnItemNorARatioWeCompute() {
+        // 요약재무정보에 없고 계산할 수도 없다. 조각으로 잡히면 다른 값을 답하게 된다.
         assertThat(parse("삼성전자의 2024년 매출총이익은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 매출원가는?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 매출액증가율은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 자기자본비율은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 자기자본이익률은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 부채비율은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 영업이익률은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 총자산회전율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 주당순이익은?").factKey()).isNull();
         // 항목마다 만들어지는 표기. 목록에 적어 두지 않아도 꼬리로 걸러진다.
-        assertThat(parse("삼성전자의 2024년 당기순이익률은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 당기순이익증가율은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 영업수익률은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 영업손익률은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 총자산순이익률은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 영업수익증가율은?").factKey()).isNull();
+        assertThat(parse("삼성전자의 2024년 자기자본증가율은?").factKey()).isNull();
     }
 
     @Test
-    void refusesRatiosWrittenWithASpace() {
+    void refusesUncomputableRatiosWrittenWithASpace() {
         // 표현을 찾을 때 공백을 지우므로 띄어 쓴 표기도 같게 본다.
         assertThat(parse("삼성전자의 2024년 매출 증가율은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 매출액 증가율은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 순이익 증가율은?").factKey()).isNull();
-        assertThat(parse("삼성전자의 2024년 자기자본 비율은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 총자산 회전율은?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 영업이익 증가율은?").factKey()).isNull();
+    }
+
+    @Test
+    void readsRatiosAsRatiosNotAsTheirNumerator() {
+        assertThat(parse("삼성전자의 2024년 영업이익률은?").ratio())
+                .isEqualTo(FinancialRatio.OPERATING_MARGIN);
+        assertThat(parse("삼성전자의 2024년 순이익률은?").ratio())
+                .isEqualTo(FinancialRatio.NET_MARGIN);
+        assertThat(parse("삼성전자의 2024년 당기순이익률은?").ratio())
+                .isEqualTo(FinancialRatio.NET_MARGIN);
+        assertThat(parse("삼성전자의 2024년 부채비율은?").ratio())
+                .isEqualTo(FinancialRatio.DEBT_RATIO);
+        assertThat(parse("삼성전자의 2024년 자기자본비율은?").ratio())
+                .isEqualTo(FinancialRatio.EQUITY_RATIO);
+        // 띄어 쓴 비율도 같게 본다.
+        assertThat(parse("삼성전자의 2024년 자기자본 비율은?").ratio())
+                .isEqualTo(FinancialRatio.EQUITY_RATIO);
+        assertThat(parse("삼성전자의 2024년 ROE는?").ratio())
+                .isEqualTo(FinancialRatio.RETURN_ON_EQUITY);
+        assertThat(parse("삼성전자의 2024년 자기자본이익률은?").ratio())
+                .isEqualTo(FinancialRatio.RETURN_ON_EQUITY);
+        assertThat(parse("삼성전자의 2024년 ROA는?").ratio())
+                .isEqualTo(FinancialRatio.RETURN_ON_ASSETS);
+        assertThat(parse("삼성전자의 2024년 총자산순이익률은?").ratio())
+                .isEqualTo(FinancialRatio.RETURN_ON_ASSETS);
+    }
+
+    @Test
+    void doesNotTreatAPlainItemAsARatio() {
+        assertThat(parse("삼성전자의 2024년 영업이익은?").ratio()).isNull();
+        assertThat(parse("삼성전자의 2024년 순이익은?").ratio()).isNull();
+        assertThat(parse("삼성전자의 2024년 자기자본은?").ratio()).isNull();
+        assertThat(parse("삼성전자의 2024년 부채총계는?").ratio()).isNull();
     }
 
     @Test
@@ -149,9 +176,13 @@ class FinancialQuestionParserTest {
         assertThat(parse("삼성전자의 2024년 기본주당순이익은 얼마인가?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 매출총이익은 얼마인가?").factKey()).isNull();
         assertThat(parse("삼성전자의 2024년 매출원가는 얼마인가?").factKey()).isNull();
-        // 비율은 금액이 아니다.
-        assertThat(parse("삼성전자의 2024년 영업이익률은 얼마인가?").factKey()).isNull();
+        // 계산할 수 없는 비율은 금액으로도 잡지 않는다.
         assertThat(parse("삼성전자의 2024년 총자산회전율은 얼마인가?").factKey()).isNull();
+
+        // 계산할 수 있는 비율은 비율로 잡는다. 분자 금액을 비율인 척 답하지 않는다.
+        FinancialQuestion margin = parse("삼성전자의 2024년 영업이익률은 얼마인가?");
+        assertThat(margin.isRatio()).isTrue();
+        assertThat(margin.itemLabel()).isEqualTo("영업이익률");
     }
 
     @Test

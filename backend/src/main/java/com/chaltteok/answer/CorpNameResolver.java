@@ -65,6 +65,21 @@ public final class CorpNameResolver {
      */
     private static final int MIN_DERIVED_CHARS = 3;
 
+    /**
+     * 뒤에 붙으면 다른 법인이 되는 표기.
+     *
+     * <p>표기가 부분 문자열로 걸려 <b>다른 회사의 수치를 답하고 있었다.</b>
+     * {@code 카카오뱅크}가 {@code 카카오}로, {@code 네이버파이낸셜}이 {@code NAVER}로 잡혔다.
+     * 못 찾는 쪽이 틀린 답을 자신 있게 내는 쪽보다 낫다({@link #MIN_DERIVED_CHARS}와 같은 판단이다).
+     *
+     * <p>{@code 기아자동차}처럼 같은 회사의 옛 이름은 막지 않는다. 금융·계열 자회사를 만드는
+     * 표기만 담는다.
+     */
+    private static final List<String> AFFILIATE_SUFFIXES = List.of(
+            "뱅크", "페이", "파이낸셜", "증권", "카드", "캐피탈", "저축은행", "은행",
+            "생명", "화재", "손해보험", "손보", "해상", "자산운용", "인베스트먼트",
+            "벤처스", "모빌리티", "엔터테인먼트", "라이프");
+
     private static final Pattern NOISE = Pattern.compile("[\\s.\\-·_'\"()]+");
     /** 영문·숫자 앞머리. `SK하이닉스`에서 `하이닉스`를 뽑는다. */
     private static final Pattern LATIN_PREFIX = Pattern.compile("^[A-Z0-9&]{2,6}(?=[가-힣])");
@@ -119,7 +134,11 @@ public final class CorpNameResolver {
         }
         Set<String> matched = aliasToCorpNames.get(bestAlias);
         // 같은 표기에 여러 기업이 걸리면 찍지 않는다.
-        return matched.size() == 1 ? matched.iterator().next() : null;
+        if (matched.size() != 1) {
+            return null;
+        }
+        String corpName = matched.iterator().next();
+        return asksAboutAffiliate(folded, corpName) ? null : corpName;
     }
 
     /**
@@ -151,8 +170,12 @@ public final class CorpNameResolver {
                 if (anyCovered(covered, at, end)) {
                     continue;
                 }
+                String corpName = matched.iterator().next();
+                if (asksAboutAffiliate(folded, corpName)) {
+                    continue;
+                }
                 Arrays.fill(covered, at, end, true);
-                byPosition.put(at, matched.iterator().next());
+                byPosition.put(at, corpName);
             }
         }
         return byPosition.values().stream().distinct().toList();
@@ -197,23 +220,42 @@ public final class CorpNameResolver {
      * 우연히 들어 있는 6자리를 종목코드로 읽으면 엉뚱한 기업이 나온다.
      */
     private static boolean contains(String text, String alias) {
-        if (!alias.chars().allMatch(Character::isDigit)) {
-            return text.contains(alias);
-        }
         int from = 0;
         while (true) {
             int at = text.indexOf(alias, from);
             if (at < 0) {
                 return false;
             }
-            boolean digitBefore = at > 0 && Character.isDigit(text.charAt(at - 1));
-            int after = at + alias.length();
-            boolean digitAfter = after < text.length() && Character.isDigit(text.charAt(after));
-            if (!digitBefore && !digitAfter) {
+            if (!digitNeighbour(text, at, alias)) {
                 return true;
             }
             from = at + 1;
         }
+    }
+
+    /**
+     * 질문이 이 회사가 아니라 그 이름을 앞에 단 다른 법인을 묻는지.
+     *
+     * <p>이 회사의 표기 뒤에 자회사를 만드는 말이 붙었는지 본다. 붙여 만든 이름이 <b>이 회사의
+     * 다른 표기이면</b> 그 회사가 맞다. {@code 미래에셋}+{@code 증권}은 {@code 미래에셋증권}이라
+     * 통과하고, {@code 미래에셋}+{@code 생명}은 색인에 없어 막힌다.
+     *
+     * <p>정식 사명만 보면 모자란다. 표기에는 앞을 자른 조각({@code NAV})이 섞여 있어
+     * 그쪽이 먼저 걸리기도 한다.
+     */
+    private boolean asksAboutAffiliate(String folded, String corpName) {
+        for (Map.Entry<String, Set<String>> entry : aliasToCorpNames.entrySet()) {
+            if (!entry.getValue().contains(corpName)) {
+                continue;
+            }
+            for (String suffix : AFFILIATE_SUFFIXES) {
+                String extended = entry.getKey() + suffix;
+                if (folded.contains(extended) && !aliasToCorpNames.containsKey(extended)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static Set<String> aliasesOf(CorpIdentity identity) {

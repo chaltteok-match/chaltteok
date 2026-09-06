@@ -49,4 +49,10 @@ public record FinancialQuestion(
     public boolean isAnswerable() {
         return corpName() != null && targetYear != null && factKey != null;
     }
+
+    /** 질문에 연도가 없어 다른 근거로 연도를 정했을 때 쓴다. */
+    public FinancialQuestion withTargetYear(Integer year) {
+        return new FinancialQuestion(corpNames, year, baseYear, factKey, itemLabel,
+                scope, scopeExplicit, wantsCorpRanking, lostCounterpart);
+    }
 }

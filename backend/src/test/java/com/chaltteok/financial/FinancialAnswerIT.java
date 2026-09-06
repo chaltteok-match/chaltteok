@@ -183,6 +183,35 @@ class FinancialAnswerIT {
     }
 
     @Test
+    void answersTheLatestYearWhenTheQuestionOnlySaysRecent() throws Exception {
+        // 픽스처의 가장 최근 사업보고서는 2024년치다.
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 최근 연결기준 매출액은 300조 8,709억원입니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-LATEST")
+                        .param("question", "삼성전자의 최근 연결기준 매출액은 얼마인가?"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("300,870,903")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("2024년")));
+    }
+
+    @Test
+    void answersAnEverydayItemNameWrittenWithoutAYearSuffix() throws Exception {
+        when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(
+                "삼성전자의 2024년 연결기준 매출액은 300조 8,709억원입니다.",
+                "HCX-005", 10, 20, 30));
+
+        mockMvc.perform(get("/answer")
+                        .param("question_id", "Q-PERIODIC-SHORT")
+                        .param("question", "삼성전자 연결 매출 2024"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieved_context").value(containsString("300,870,903")))
+                .andExpect(jsonPath("$.think_trace").value(containsString("2024년")));
+    }
+
+    @Test
     void comparesTwoYearsThatNoSingleReportHoldsTogether() throws Exception {
         // 표는 세 기간뿐이라 2024년 보고서에 2021년이 없다. 2021년은 2023년 보고서에서 가져온다.
         when(hcxClient.generate(any(HcxPrompt.class))).thenReturn(new HcxResult(

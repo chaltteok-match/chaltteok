@@ -22,7 +22,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -41,6 +43,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class FinancialAnswerHandler implements AnswerHandler {
 
     private static final int SCALE = 2;
+    /** 연도를 적지 않고 최신을 묻는 말. */
+    private static final Pattern LATEST = Pattern.compile("최근|최신|가장 ?최근|직전|마지막");
 
     private final DisclosureDocumentRepository documentRepository;
     private final ExtractedFactRepository factRepository;
@@ -71,8 +75,8 @@ public class FinancialAnswerHandler implements AnswerHandler {
     @Override
     @Transactional(readOnly = true)
     public AnswerHandlerResult handle(String questionId, String question) {
-        FinancialQuestion parsed = parse(question);
-        if (parsed.wantsCorpRanking()) {
+        FinancialQuestion initial = parse(question);
+        if (initial.wantsCorpRanking()) {
             // 근거를 댈 수 있는 것은 질문에 이름이 나온 기업뿐이다. 70개사를 훑어 순위를 매기면
             // 적재되지 않은 기업이 빠진 채 「가장 크다」고 답하게 된다.
             return AnswerHandlerResult.unavailable(
@@ -80,12 +84,13 @@ public class FinancialAnswerHandler implements AnswerHandler {
                     "제공된 공시 데이터로는 기업 전체를 견주어 순위를 답할 수 없습니다."
                             + " 비교할 기업을 두 곳 이상 지정해 주세요");
         }
-        if (parsed.lostCounterpart()) {
+        if (initial.lostCounterpart()) {
             return AnswerHandlerResult.unavailable(
                     "비교 상대 기업을 코퍼스에서 찾지 못함 → 한 기업 수치로 비교하지 않음",
                     "%s 외에 비교할 기업을 제공된 공시 데이터에서 찾지 못했습니다"
-                            .formatted(parsed.corpName()));
+                            .formatted(initial.corpName()));
         }
+        FinancialQuestion parsed = latestYearIfAsked(initial, question);
         if (!parsed.isAnswerable()) {
             return AnswerHandlerResult.unavailable(
                     "질문에서 기업·연도·항목을 식별하는 중",
@@ -518,6 +523,29 @@ public class FinancialAnswerHandler implements AnswerHandler {
 
     private static String scopeText(Scope scope) {
         return scope == Scope.SEPARATE ? "별도" : "연결";
+    }
+
+    /**
+     * {@code 최근 매출액은?}처럼 연도를 적지 않고 최신을 묻는 질문의 연도를 정한다.
+     *
+     * <p>그 기업의 가장 최근 사업보고서 기준연도로 본다. 연도를 적은 질문은 그대로 둔다.
+     * 기업을 못 찾았으면 정할 근거가 없어 그대로 둔다.
+     */
+    private FinancialQuestion latestYearIfAsked(FinancialQuestion parsed, String question) {
+        if (parsed.targetYear() != null || parsed.corpName() == null
+                || !LATEST.matcher(question).find()) {
+            return parsed;
+        }
+        return documentRepository
+                .findByCorpNameAndDocGroupOrderByRceptDtDescRceptNoDesc(
+                        parsed.corpName(), DocGroup.PERIODIC)
+                .stream()
+                .filter(document -> "annual".equals(document.getDocSubtype()))
+                .map(DisclosureDocumentEntity::getBaseYear)
+                .filter(Objects::nonNull)
+                .max(Comparator.naturalOrder())
+                .map(parsed::withTargetYear)
+                .orElse(parsed);
     }
 
     private FinancialQuestion parse(String question) {

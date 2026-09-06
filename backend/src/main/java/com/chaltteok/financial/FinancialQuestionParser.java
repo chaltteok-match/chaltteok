@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -111,13 +112,35 @@ final class FinancialQuestionParser {
             "순이익률", "순이익율", "순이익증가율",
             "자기자본비율", "자기자본이익률", "자기자본순이익률", "자기자본증가율", "자기자본회전율",
             "총자산회전율", "총자산이익률", "총자산순이익률", "총자산증가율",
+            "당기순이익률", "당기순이익율", "당기순이익증가율",
+            "영업수익률", "영업수익율", "영업수익증가율", "영업손익률", "영업손익율",
             "부채비율", "부채총계증가율", "자산총계증가율", "자본총계증가율");
 
-    /** 인정 표현과 혼동 표현을 함께 두고 가장 긴 것을 고른다. */
+    /**
+     * 항목 뒤에 붙어 비율을 만드는 꼬리. 이 꼬리가 붙으면 금액이 아니다.
+     *
+     * <p>{@link #CONFUSABLE_TERMS}에 다 적을 수 없다. 항목마다 만들어지기 때문이다.
+     * 목록에 없는 표기가 새로 나와도 <b>항목 바로 뒤 세 글자 안에 {@code 률}·{@code 율}이
+     * 있으면</b> 항목으로 보지 않는다. 세 글자면 {@code 률}·{@code 비율}·{@code 증가율}·
+     * {@code 회전율}이 모두 들어온다. 목록은 이 검사로 못 잡는 표기를 위해 남긴다
+     * ({@code 총자산순이익률}처럼 꼬리가 세 글자를 넘는 것, {@code 매출채권}처럼 율이 없는 것).
+     */
+    private static final int RATIO_TAIL_WINDOW = 3;
+
+    /** 인정 표현과 혼동 표현을 함께 두고 가장 긴 것을 고른다. 공백은 지우고 견준다. */
     private static final List<String> ALL_TERMS = Stream
             .concat(ITEM_KEYWORDS.keySet().stream(), CONFUSABLE_TERMS.stream())
+            .map(FinancialQuestionParser::compact)
+            .distinct()
             .sorted(Comparator.comparingInt(String::length).reversed())
             .toList();
+
+    /** 공백을 지운 표기로 찾기 위한 표. {@code 자산 규모}와 {@code 자산규모}를 같게 본다. */
+    private static final Map<String, String> COMPACT_ITEMS = ITEM_KEYWORDS.entrySet().stream()
+            .collect(Collectors.toMap(
+                    entry -> compact(entry.getKey()),
+                    Map.Entry::getValue,
+                    (first, second) -> first));
 
     private FinancialQuestionParser() {
     }
@@ -128,9 +151,14 @@ final class FinancialQuestionParser {
         List<String> mentioned = corpNames.resolveAll(text);
         // 가장 긴 표현이 혼동 표현이면 항목을 만들지 않는다.
         // '주당순이익'에 당기순이익을, '총자산회전율'에 자산총계를 답하지 않기 위해서다.
-        String matched = ALL_TERMS.stream().filter(text::contains).findFirst().orElse(null);
-        String itemLabel = matched != null && ITEM_KEYWORDS.containsKey(matched) ? matched : null;
-        String factKey = itemLabel == null ? null : ITEM_KEYWORDS.get(itemLabel);
+        // 표현을 찾을 때만 공백을 지운다. `매출 증가율`과 `매출증가율`을 같게 보기 위해서다.
+        String compacted = compact(text);
+        String matched = ALL_TERMS.stream().filter(compacted::contains).findFirst().orElse(null);
+        String itemLabel = matched != null && COMPACT_ITEMS.containsKey(matched) ? matched : null;
+        if (itemLabel != null && hasRatioTail(compacted, itemLabel)) {
+            itemLabel = null;
+        }
+        String factKey = itemLabel == null ? null : COMPACT_ITEMS.get(itemLabel);
 
         List<Integer> years = years(text);
         Integer targetYear = years.isEmpty() ? null : years.get(years.size() - 1);
@@ -201,6 +229,25 @@ final class FinancialQuestionParser {
     private static boolean startsWithKnownWord(String after) {
         String trimmed = after.stripLeading();
         return NOT_A_COMPANY.stream().anyMatch(trimmed::startsWith);
+    }
+
+    private static String compact(String text) {
+        return text.replaceAll("\\s+", "");
+    }
+
+    /** 항목 바로 뒤 세 글자 안에 {@code 률}·{@code 율}이 있으면 비율이다. */
+    private static boolean hasRatioTail(String compacted, String item) {
+        int at = compacted.indexOf(item);
+        while (at >= 0) {
+            int from = at + item.length();
+            String tail = compacted.substring(
+                    from, Math.min(compacted.length(), from + RATIO_TAIL_WINDOW));
+            if (tail.indexOf('률') >= 0 || tail.indexOf('율') >= 0) {
+                return true;
+            }
+            at = compacted.indexOf(item, at + 1);
+        }
+        return false;
     }
 
     private static List<Integer> years(String text) {

@@ -90,6 +90,42 @@ class SingleReportDateDocumentsTest {
                 .containsExactly(in2024, in2025);
     }
 
+    @Test
+    void keepsACorrectionThatCrossedIntoTheNextYear() {
+        // LG씨엔에스 유상증자: 원본 2024-12-05, 정정 2025-01-17.
+        // 갈라 놓으면 2024년으로 물었을 때 정정 전 값을 답한다.
+        DisclosureDocumentEntity original = document("a", LocalDate.of(2024, 12, 5), false);
+        DisclosureDocumentEntity correction = document("b", LocalDate.of(2025, 1, 17), true);
+
+        List<DisclosureDocumentEntity> scoped =
+                SingleReportDateDocuments.inYear(List.of(original, correction), 2024);
+
+        assertThat(scoped).containsExactly(original, correction);
+        assertThat(SingleReportDateDocuments.uniqueDay(scoped)).containsExactly(correction);
+    }
+
+    @Test
+    void doesNotJoinACorrectionWhenAnotherEventFiledInBetween() {
+        // 이마트 자기주식: 2024-07-18 원본, 2025-01-20 원본과 그 정정.
+        // 2025년 정정은 2025년 원본의 것이다. 2024년 원본에 이으면 다른 사건을 답한다.
+        DisclosureDocumentEntity first = document("a", LocalDate.of(2024, 7, 18), false);
+        DisclosureDocumentEntity second = document("b", LocalDate.of(2025, 1, 20), false);
+        DisclosureDocumentEntity correction = document("c", LocalDate.of(2025, 1, 20), true);
+
+        assertThat(SingleReportDateDocuments.inYear(List.of(first, second, correction), 2024))
+                .containsExactly(first);
+    }
+
+    @Test
+    void doesNotJoinACorrectionWhenTheYearHoldsSeveralOriginals() {
+        DisclosureDocumentEntity first = document("a", LocalDate.of(2024, 3, 2), false);
+        DisclosureDocumentEntity second = document("b", LocalDate.of(2024, 12, 5), false);
+        DisclosureDocumentEntity correction = document("c", LocalDate.of(2025, 1, 17), true);
+
+        assertThat(SingleReportDateDocuments.inYear(List.of(first, second, correction), 2024))
+                .containsExactly(first, second);
+    }
+
     private static DisclosureDocumentEntity document(String docId, LocalDate date, boolean correction) {
         DisclosureDocumentEntity entity = new DisclosureDocumentEntity();
         entity.setDocId(docId);

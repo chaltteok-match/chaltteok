@@ -21,6 +21,15 @@ import java.util.stream.Stream;
 final class FinancialQuestionParser {
 
     private static final Pattern YEAR = Pattern.compile("(19|20)\\d{2}\\s*년");
+
+    /**
+     * {@code 년}이 붙지 않은 네 자리 연도. {@code 삼성전자 매출액 2024}처럼 쓴다.
+     *
+     * <p>{@link #YEAR}로 하나도 못 찾았을 때만 본다. 앞뒤에 숫자·쉼표·소수점·퍼센트가 붙으면
+     * 연도가 아니라 금액이나 종목코드의 일부다.
+     */
+    private static final Pattern BARE_YEAR = Pattern.compile(
+            "(?<![0-9,.])(19|20)\\d{2}(?![0-9,.%])");
     private static final Pattern COMPARISON = Pattern.compile(
             "대비|증감|증가|감소|늘어|늘었|줄어|줄었|비교|성장|얼마나");
 
@@ -58,33 +67,51 @@ final class FinancialQuestionParser {
     private static final Pattern JOINED_PAIR = Pattern.compile("(와|과)\\s+");
 
     /**
-     * 질문에서 인정하는 항목 표현. 문서 파서의 인정 라벨과 같은 범위로 좁혀 둔다.
-     * {@code 매출}·{@code 순이익} 같은 조각은 넣지 않는다.
-     * {@code 주당순이익}이 {@code 순이익}으로, {@code 매출총이익}이 {@code 매출}로 잡히면
-     * 문서 쪽에서 막은 오탐이 질문 쪽에서 다시 열린다.
+     * 질문에서 인정하는 항목 표현.
+     *
+     * <p>{@code 매출}·{@code 순이익}처럼 짧은 조각도 받는다. 실무에서 더 흔히 쓰는 말이라
+     * 빼 두면 같은 것을 묻는 질문의 절반이 Handler에 닿지 못한다. 대신 이 조각을 품은
+     * 다른 뜻의 말은 {@link #CONFUSABLE_TERMS}에 모두 적어 둔다. 가장 긴 표현이 이기므로
+     * {@code 주당순이익}은 {@code 순이익}으로, {@code 매출총이익}은 {@code 매출}로 잡히지 않는다.
      */
     private static final Map<String, String> ITEM_KEYWORDS = Map.ofEntries(
             Map.entry("매출액", "revenue"),
+            Map.entry("매출", "revenue"),
             Map.entry("영업수익", "revenue"),
             Map.entry("영업이익", "operating_profit"),
+            Map.entry("영업손익", "operating_profit"),
             Map.entry("당기순이익", "net_income"),
+            Map.entry("순이익", "net_income"),
             Map.entry("자산총계", "total_assets"),
             Map.entry("총자산", "total_assets"),
+            Map.entry("자산 규모", "total_assets"),
+            Map.entry("자산규모", "total_assets"),
             Map.entry("부채총계", "total_liabilities"),
             Map.entry("총부채", "total_liabilities"),
+            Map.entry("부채 규모", "total_liabilities"),
+            Map.entry("부채규모", "total_liabilities"),
             Map.entry("자본총계", "total_equity"),
-            Map.entry("총자본", "total_equity"));
+            Map.entry("총자본", "total_equity"),
+            Map.entry("자기자본", "total_equity"),
+            Map.entry("자본 규모", "total_equity"),
+            Map.entry("자본규모", "total_equity"));
 
     /**
      * 인정 표현을 포함하지만 뜻이 다른 표현. 이 중 하나가 더 길게 걸리면 항목을 만들지 않는다.
      * 예: {@code 총자산회전율}은 {@code 총자산}을 품고 있지만 금액이 아니라 비율이다.
+     *
+     * <p>비율·증가율은 요약재무정보에 없는 값이다. 항목으로 잡으면 분자에 해당하는 금액을
+     * 비율인 것처럼 답하게 된다.
      */
     private static final Set<String> CONFUSABLE_TERMS = Set.of(
-            "매출총이익", "매출원가", "매출채권", "매출액영업이익률", "매출액순이익률",
-            "영업이익률", "영업이익증가율",
+            "매출총이익", "매출총이익률", "매출원가", "매출원가율", "매출채권", "매출채권회전율",
+            "매출액영업이익률", "매출액순이익률", "매출액증가율", "매출증가율", "매출비중", "매출구성",
+            "영업이익률", "영업이익증가율", "영업이익율",
             "주당순이익", "기본주당순이익", "희석주당순이익",
+            "순이익률", "순이익율", "순이익증가율",
+            "자기자본비율", "자기자본이익률", "자기자본순이익률", "자기자본증가율", "자기자본회전율",
             "총자산회전율", "총자산이익률", "총자산순이익률", "총자산증가율",
-            "자산총계증가율", "부채총계증가율", "자본총계증가율");
+            "부채비율", "부채총계증가율", "자산총계증가율", "자본총계증가율");
 
     /** 인정 표현과 혼동 표현을 함께 두고 가장 긴 것을 고른다. */
     private static final List<String> ALL_TERMS = Stream
@@ -177,8 +204,13 @@ final class FinancialQuestionParser {
     }
 
     private static List<Integer> years(String text) {
+        List<Integer> years = collect(YEAR, text);
+        return years.isEmpty() ? collect(BARE_YEAR, text) : years;
+    }
+
+    private static List<Integer> collect(Pattern pattern, String text) {
         List<Integer> years = new ArrayList<>();
-        Matcher matcher = YEAR.matcher(text);
+        Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             int year = Integer.parseInt(matcher.group().replaceAll("[^0-9]", ""));
             if (!years.contains(year)) {
